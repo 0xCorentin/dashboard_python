@@ -4002,58 +4002,7 @@ def show_home_page():
             st.session_state.current_page = "entrees_sorties_analysis"
             st.rerun()
     
-    # Statistiques et informations
-    st.markdown("---")
     
-    info_col1, info_col2, info_col3 = st.columns(3)
-    
-    with info_col1:
-        st.metric("🔧 Outils Disponibles", "4", help="Hebdomadaire, Production Mensuelle, Atterrissage, Entrées-Sorties-Abandons")
-    
-    with info_col2:
-        st.metric("📊 Formats Supportés", "3", help="Excel (.xlsx, .xls, .xlsb)")
-    
-    with info_col3:
-        st.metric("🚀 Version", "v2.3", help="Hub d'analyse avec Entrées-Sorties-Abandons")
-    
-    # Aide et documentation
-    with st.expander("📚 Aide et Documentation"):
-        st.markdown("""
-        ### 🎯 Guide de Navigation
-        
-        **📊 Optimisation des plateaux :**
-        - Idéal pour le suivi hebdomadaire de production par région
-        - Upload de fichier Excel avec colonnes TX DE CAPACITE
-        - Visualisations interactives avec classification automatique
-        
-        **📈 Analyseur Production Mensuelle :**
-        - Analyse de production HORS PAE par région et financeur
-        - Courbe de cumul mensuel sur le total
-        - Barres groupées par financeur avec visualisations avancées
-        
-        **🎯 Analyseur Atterrissage :**
-        - Prévisions et réalisations par région
-        - Comparaison TX septembre vs décembre
-        - Analyse du reste à faire par région
-        
-        **🔄 Analyseur Flux de Stagiaires :**
-        - Upload de fichier Excel ou chemin personnalisé
-        - Analyse des flux d'entrées de stagiaires par région et financeur
-        - Suivi des sorties et abandons par région
-        - Calcul automatique du taux de rétention et de l'écart
-        - Visualisations par financeur avec barres groupées
-        
-        **🔄 Navigation :**
-        - Utilisez le menu latéral pour revenir au hub
-        - Chaque outil conserve ses paramètres durant la session
-        
-        **💡 Conseils :**
-        - Préparez vos fichiers Excel avec les colonnes requises
-        - Les colonnes numériques sont automatiquement détectées
-        - Utilisez les filtres pour personnaliser vos analyses
-        - Tous les analyseurs supportent l'upload ou le chemin personnalisé
-        """)
-
 def show_landing_analysis():
     """Page de l'analyseur d'atterrissage"""
     
