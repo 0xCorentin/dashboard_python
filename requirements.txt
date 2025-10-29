@@ -1,0 +1,17 @@
+# Dependencies pour Hub d'Analyse Excel - Version Optimisée
+# Core framework
+streamlit>=1.28.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualization
+plotly>=5.15.0
+
+# Excel file handling
+openpyxl>=3.1.0
+
+# Optional: Export capabilities
+xlsxwriter>=3.1.0
+
