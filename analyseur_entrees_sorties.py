@@ -914,6 +914,57 @@ def create_feuil3_visualization(df):
             key="feuil3_metric"
         )
     
+    # Détecter automatiquement si des colonnes 2024 et 2025 existent
+    cols_2024 = [col for col in metric_cols if '2024' in str(col) and 'Ecart' not in str(col)]
+    cols_2025 = [col for col in metric_cols if '2025' in str(col) and 'Ecart' not in str(col)]
+    cols_ecart = [col for col in metric_cols if 'Ecart' in str(col) or 'écart' in str(col).lower()]
+    
+    can_compare_years = len(cols_2024) > 0 and len(cols_2025) > 0
+    
+    # Option de comparaison d'années
+    st.markdown("### 🔄 Options de Comparaison")
+    col_comp1, col_comp2 = st.columns(2)
+    
+    comparison_metric = None  # Initialiser la variable
+    
+    with col_comp1:
+        if can_compare_years:
+            comparison_mode = st.selectbox(
+                "📊 Mode d'analyse:",
+                ["Vue simple", "Comparaison 2024 vs 2025"],
+                key="feuil3_comparison_mode"
+            )
+        else:
+            comparison_mode = "Vue simple"
+            st.info("ℹ️ Mode comparaison indisponible (colonnes 2024/2025 manquantes)")
+
+    with col_comp2:
+        if comparison_mode == "Comparaison 2024 vs 2025" and can_compare_years:
+            # Déterminer les métriques de base (sans l'année)
+            base_metrics = set()
+            for col in cols_2024:
+                # Enlever "2024" et nettoyer le nom
+                base_name = col.replace('2024', '').replace('_2024', '').strip()
+                # Enlever les caractères de ponctuation en début/fin
+                base_name = base_name.strip(' -_.,')
+                if base_name:
+                    base_metrics.add(base_name)
+            
+            if base_metrics:
+                comparison_metric = st.selectbox(
+                    "📈 Métrique à comparer:",
+                    sorted(list(base_metrics)),
+                    key="feuil3_comparison_metric"
+                )
+            else:
+                comparison_metric = None
+                st.warning("⚠️ Impossible de déterminer les métriques à comparer")
+        elif comparison_mode == "Vue simple":
+            st.info("💡 Sélectionnez 'Comparaison 2024 vs 2025' pour comparer les années")
+    
+    # Toujours utiliser la vue simple
+    graph_type = "Vue simple (métrique sélectionnée)"
+    
     if not regions_to_show or not financeurs_to_show:
         st.warning("⚠️ Veuillez sélectionner au moins une région et un financeur")
         return
@@ -928,7 +979,437 @@ def create_feuil3_visualization(df):
         st.warning("⚠️ Aucune donnée à afficher avec les filtres sélectionnés")
         return
     
-    # ========== MODE VUE SIMPLE ==========
+    # ========== MODE COMPARAISON 2024 vs 2025 ==========
+    if comparison_mode == "Comparaison 2024 vs 2025" and can_compare_years and comparison_metric:
+            
+        st.markdown("### 📊 Comparaison 2024 vs 2025")
+        
+        # Construire les noms de colonnes pour 2024 et 2025
+        # Chercher les colonnes correspondantes à la métrique choisie
+        possible_cols_2024 = []
+        possible_cols_2025 = []
+        
+        # Essayer plusieurs variantes de recherche
+        if comparison_metric:
+            search_patterns = [
+                comparison_metric,  # Nom exact
+                f"{comparison_metric} 2024",  # Avec année
+                comparison_metric.replace('.', '').replace(',', ''),  # Sans ponctuation
+            ]
+            
+            for pattern in search_patterns:
+                if not possible_cols_2024:
+                    possible_cols_2024 = [c for c in cols_2024 if pattern.lower() in c.lower()]
+                if not possible_cols_2025:
+                    possible_cols_2025 = [c for c in cols_2025 if pattern.lower() in c.lower()]
+                
+                if possible_cols_2024 and possible_cols_2025:
+                    break
+            
+            # Si on n'a toujours pas trouvé, chercher juste avec une partie du nom
+            if not possible_cols_2024 or not possible_cols_2025:
+                # Prendre le premier mot significatif
+                first_word = comparison_metric.split()[0] if ' ' in comparison_metric else comparison_metric
+                possible_cols_2024 = [c for c in cols_2024 if first_word.lower() in c.lower()]
+                possible_cols_2025 = [c for c in cols_2025 if first_word.lower() in c.lower()]
+        
+        # Vérifier qu'on a bien trouvé des colonnes
+        if not possible_cols_2024 or not possible_cols_2025:
+            st.error(f"❌ Impossible de trouver les colonnes pour '{comparison_metric}'")
+            
+            with st.expander("🔍 Informations de Debug - Colonnes Détectées"):
+                st.write(f"**Métrique recherchée:** {comparison_metric}")
+                st.write(f"**Colonnes 2024 disponibles:** {', '.join(cols_2024) if cols_2024 else 'Aucune'}")
+                st.write(f"**Colonnes 2025 disponibles:** {', '.join(cols_2025) if cols_2025 else 'Aucune'}")
+                st.write(f"**Colonnes d'écart disponibles:** {', '.join(cols_ecart) if cols_ecart else 'Aucune'}")
+                st.write(f"**Toutes les colonnes métriques:** {', '.join(metric_cols)}")
+            
+            return
+        
+        col_2024 = possible_cols_2024[0]
+        col_2025 = possible_cols_2025[0]
+        
+        # Chercher la colonne d'écart si elle existe
+        col_ecart = None
+        if cols_ecart:
+            ecart_matches = [c for c in cols_ecart if '2025' in c and '2024' in c]
+            if ecart_matches:
+                col_ecart = ecart_matches[0]
+        
+        st.info(f"📊 Comparaison: **{col_2024}** vs **{col_2025}**" + 
+                (f" | Écart: **{col_ecart}**" if col_ecart else ""))
+        
+        # Calculer l'ordre des régions par total 2025
+        region_totals_2025 = df_filtered.groupby('REGION')[col_2025].sum().sort_values(ascending=False)
+        region_order = region_totals_2025.index.tolist()
+        
+
+        
+        # Afficher le graphique en vue simple
+        st.markdown("### 📊 Comparaison 2024 vs 2025")
+        
+        fig_compare = go.Figure()
+        
+        # Barres pour 2024 (toutes régions)
+        regions_2024 = []
+        values_2024 = []
+        for region in region_order:
+            region_data = df_filtered[df_filtered['REGION'] == region]
+            if not region_data.empty and col_2024 in region_data.columns:
+                regions_2024.append(region)
+                values_2024.append(region_data[col_2024].sum())
+        
+        fig_compare.add_trace(go.Bar(
+            x=regions_2024,
+            y=values_2024,
+            name='2024',
+            marker_color='#FF6B6B',
+            text=[f"{val:,.0f}" for val in values_2024],
+            textposition='outside',
+            offsetgroup=0
+        ))
+        
+        # Barres pour 2025 (toutes régions)
+        regions_2025 = []
+        values_2025 = []
+        for region in region_order:
+            region_data = df_filtered[df_filtered['REGION'] == region]
+            if not region_data.empty and col_2025 in region_data.columns:
+                regions_2025.append(region)
+                values_2025.append(region_data[col_2025].sum())
+        
+        fig_compare.add_trace(go.Bar(
+            x=regions_2025,
+            y=values_2025,
+            name='2025',
+            marker_color='#4ECDC4',
+            text=[f"{val:,.0f}" for val in values_2025],
+            textposition='outside',
+            offsetgroup=1
+        ))
+        
+        # Calculer et ajouter les écarts (2025 - 2024)
+        regions_ecart = []
+        values_ecart = []
+        for region in region_order:
+            region_data = df_filtered[df_filtered['REGION'] == region]
+            if not region_data.empty:
+                value_2024 = region_data[col_2024].sum() if col_2024 in region_data.columns else 0
+                value_2025 = region_data[col_2025].sum() if col_2025 in region_data.columns else 0
+                ecart = value_2025 - value_2024
+                regions_ecart.append(region)
+                values_ecart.append(ecart)
+        
+        fig_compare.add_trace(go.Bar(
+            x=regions_ecart,
+            y=values_ecart,
+            name='Écart (2025-2024)',
+            marker_color='#FFB347',  # Orange pour l'écart
+            text=[f"{val:+,.0f}" for val in values_ecart],  # Afficher le signe + ou -
+            textposition='outside',
+            offsetgroup=2
+        ))
+        
+        # Configuration du graphique simple
+        fig_compare.update_layout(
+            title=f"📊 Comparaison {comparison_metric} : 2024 vs 2025 avec Écart",
+            xaxis_title="Régions",
+            yaxis_title=comparison_metric,
+            height=700,
+            barmode='group',
+            hovermode='x unified',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="center",
+                x=0.5
+            ),
+            xaxis_tickangle=-45
+        )
+        
+        st.plotly_chart(fig_compare, use_container_width=True)
+        
+        # ========== NOUVEAU GRAPHIQUE PAR FINANCEURS ==========
+        st.markdown("---")
+        st.markdown("### 📊 Analyse Détaillée par Financeurs")
+        
+        try:
+            # Charger les données du fichier Excel spécifique
+            excel_path = 'c:/Dashboard/analyseur_hebdomadaire/flux_model.xlsx'
+            df_excel = pd.read_excel(excel_path, sheet_name='Feuil3')
+            
+            # Traiter les données pour avoir une structure propre Region-Financeur
+            processed_data = []
+            current_region = None
+            
+            for _, row in df_excel.iterrows():
+                if pd.notna(row['Régions']) and row['Régions'] != 'Total général':
+                    current_region = row['Régions']
+                    # La première ligne de région contient aussi un financeur
+                    processed_data.append({
+                        'REGION': current_region,
+                        'FINANCEURS': row['Financeurs'],
+                        'Entrées 2024': row['Nb. de stagiaires entrés 2024'],
+                        'Entrées 2025': row['Nb. de stagiaires entrés 2025'],
+                        'Écart': row['Ecart\n(2025-2024)']
+                    })
+                elif pd.notna(row['Financeurs']) and current_region:
+                    # Lignes suivantes avec des financeurs pour la même région
+                    processed_data.append({
+                        'REGION': current_region,
+                        'FINANCEURS': row['Financeurs'],
+                        'Entrées 2024': row['Nb. de stagiaires entrés 2024'],
+                        'Entrées 2025': row['Nb. de stagiaires entrés 2025'],
+                        'Écart': row['Ecart\n(2025-2024)']
+                    })
+            
+            df_financeurs = pd.DataFrame(processed_data)
+            
+            # Filtrer selon les régions sélectionnées
+            df_financeurs_filtered = df_financeurs[df_financeurs['REGION'].isin(regions_to_show)].copy()
+            
+            if not df_financeurs_filtered.empty:
+                # Créer le graphique par financeurs
+                fig_financeurs = go.Figure()
+                
+                # Couleurs spécifiques pour chaque financeur
+                financeur_colors = {
+                    'B2C - CPF': '#FF6B6B',
+                    'B2C - CPFT': '#4ECDC4', 
+                    'Marché de l\'Alternance': '#45B7D1',
+                    'Marché des Entreprises': '#96CEB4',
+                    'Marché Public': '#FFEAA7'
+                }
+                
+                # Ordre des régions par total 2025 décroissant
+                region_totals_financeurs = df_financeurs_filtered.groupby('REGION')['Entrées 2025'].sum().sort_values(ascending=False)
+                region_order_financeurs = region_totals_financeurs.index.tolist()
+                
+                # Créer deux graphiques séparés : un pour 2024 et un pour 2025
+                
+                # ========== GRAPHIQUE 2024 ==========
+                st.markdown("#### 📅 Année 2024")
+                fig_2024 = go.Figure()
+                
+                for i, financeur in enumerate(df_financeurs_filtered['FINANCEURS'].unique()):
+                    df_fin = df_financeurs_filtered[df_financeurs_filtered['FINANCEURS'] == financeur]
+                    
+                    regions_fin = []
+                    values_fin = []
+                    
+                    for region in region_order_financeurs:
+                        region_data = df_fin[df_fin['REGION'] == region]
+                        if not region_data.empty:
+                            regions_fin.append(region)
+                            values_fin.append(region_data['Entrées 2024'].iloc[0])
+                    
+                    if regions_fin:
+                        color_base = financeur_colors.get(financeur, '#999999')
+                        
+                        fig_2024.add_trace(go.Bar(
+                            x=regions_fin,
+                            y=values_fin,
+                            name=financeur,
+                            marker_color=color_base,
+                            text=[f"{val:,.0f}" for val in values_fin],
+                            textposition='outside',
+                            hovertemplate=f'<b>{financeur}</b><br>2024: %{{y:,.0f}}<br>Région: %{{x}}<extra></extra>'
+                        ))
+                
+                fig_2024.update_layout(
+                    title="📊 Entrées par Financeur - Année 2024",
+                    xaxis_title="Régions",
+                    yaxis_title="Nombre de stagiaires entrés",
+                    height=600,
+                    barmode='group',
+                    hovermode='x unified',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="center",
+                        x=0.5
+                    ),
+                    xaxis_tickangle=-45
+                )
+                
+                st.plotly_chart(fig_2024, use_container_width=True)
+                
+                # ========== GRAPHIQUE 2025 ==========
+                st.markdown("#### 📅 Année 2025")
+                fig_2025 = go.Figure()
+                
+                for i, financeur in enumerate(df_financeurs_filtered['FINANCEURS'].unique()):
+                    df_fin = df_financeurs_filtered[df_financeurs_filtered['FINANCEURS'] == financeur]
+                    
+                    regions_fin = []
+                    values_fin = []
+                    
+                    for region in region_order_financeurs:
+                        region_data = df_fin[df_fin['REGION'] == region]
+                        if not region_data.empty:
+                            regions_fin.append(region)
+                            values_fin.append(region_data['Entrées 2025'].iloc[0])
+                    
+                    if regions_fin:
+                        color_base = financeur_colors.get(financeur, '#999999')
+                        
+                        fig_2025.add_trace(go.Bar(
+                            x=regions_fin,
+                            y=values_fin,
+                            name=financeur,
+                            marker_color=color_base,
+                            text=[f"{val:,.0f}" for val in values_fin],
+                            textposition='outside',
+                            hovertemplate=f'<b>{financeur}</b><br>2025: %{{y:,.0f}}<br>Région: %{{x}}<extra></extra>'
+                        ))
+                
+                fig_2025.update_layout(
+                    title="📊 Entrées par Financeur - Année 2025",
+                    xaxis_title="Régions",
+                    yaxis_title="Nombre de stagiaires entrés",
+                    height=600,
+                    barmode='group',
+                    hovermode='x unified',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="center",
+                        x=0.5
+                    ),
+                    xaxis_tickangle=-45
+                )
+                
+                st.plotly_chart(fig_2025, use_container_width=True)
+                
+                # ========== GRAPHIQUE ÉCART (2025 - 2024) ==========
+                st.markdown("#### 📊 Évolution (Écart 2025-2024)")
+                fig_ecart = go.Figure()
+                
+                for i, financeur in enumerate(df_financeurs_filtered['FINANCEURS'].unique()):
+                    df_fin = df_financeurs_filtered[df_financeurs_filtered['FINANCEURS'] == financeur]
+                    
+                    regions_fin = []
+                    values_fin = []
+                    
+                    for region in region_order_financeurs:
+                        region_data = df_fin[df_fin['REGION'] == region]
+                        if not region_data.empty:
+                            regions_fin.append(region)
+                            values_fin.append(region_data['Écart'].iloc[0])
+                    
+                    if regions_fin:
+                        # Couleur orange pour les écarts, avec différentes nuances par financeur
+                        base_orange = '#FFB347'
+                        if i == 0:
+                            marker_color = '#FF8C00'  # Orange foncé
+                        elif i == 1:
+                            marker_color = '#FFB347'  # Orange moyen
+                        elif i == 2:
+                            marker_color = '#FFA500'  # Orange
+                        elif i == 3:
+                            marker_color = '#FF7F50'  # Coral
+                        else:
+                            marker_color = '#FF6347'  # Tomato
+                        
+                        fig_ecart.add_trace(go.Bar(
+                            x=regions_fin,
+                            y=values_fin,
+                            name=financeur,
+                            marker_color=marker_color,
+                            text=[f"{val:+,.0f}" for val in values_fin],
+                            textposition='outside',
+                            hovertemplate=f'<b>{financeur}</b><br>Écart (2025-2024): %{{y:+,.0f}}<br>Région: %{{x}}<extra></extra>'
+                        ))
+                
+                fig_ecart.update_layout(
+                    title="📊 Évolution par Financeur - Écart (2025-2024)",
+                    xaxis_title="Régions",
+                    yaxis_title="Écart (Nombre de stagiaires)",
+                    height=600,
+                    barmode='group',
+                    hovermode='x unified',
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="center",
+                        x=0.5
+                    ),
+                    xaxis_tickangle=-45,
+                    # Ajouter une ligne de référence à y=0
+                    shapes=[
+                        dict(
+                            type="line",
+                            x0=-0.5,
+                            y0=0,
+                            x1=len(region_order_financeurs)-0.5,
+                            y1=0,
+                            line=dict(color="black", width=2, dash="dash")
+                        )
+                    ]
+                )
+                
+                st.plotly_chart(fig_ecart, use_container_width=True)
+                
+            else:
+                st.warning("⚠️ Aucune donnée financeur disponible pour les régions sélectionnées")
+                
+        except Exception as e:
+            st.error(f"❌ Erreur lors du chargement des données financeurs : {str(e)}")
+            st.info("💡 Vérifiez que le fichier 'c:/Dashboard/analyseur_hebdomadaire/flux_model.xlsx' existe et contient la feuille 'Feuil3'")
+        
+        # KPI de Comparaison pour la vue simple
+        st.markdown("### 📈 KPI de Comparaison 2024 vs 2025")
+        
+        total_2024 = df_filtered[col_2024].sum() if col_2024 in df_filtered.columns else 0
+        total_2025 = df_filtered[col_2025].sum() if col_2025 in df_filtered.columns else 0
+        evolution = total_2025 - total_2024
+        evolution_pct = (evolution / total_2024 * 100) if total_2024 > 0 else 0
+        
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        
+        with kpi_col1:
+            st.metric(
+                "📊 Total 2024",
+                f"{total_2024:,.0f}",
+                help=f"Total {comparison_metric} en 2024"
+            )
+        
+        with kpi_col2:
+            st.metric(
+                "📊 Total 2025",
+                f"{total_2025:,.0f}",
+                delta=f"{evolution:+,.0f}",
+                help=f"Total {comparison_metric} en 2025"
+            )
+        
+        with kpi_col3:
+            delta_color = "normal" if evolution >= 0 else "inverse"
+            st.metric(
+                "📈 Évolution",
+                f"{evolution_pct:+.1f}%",
+                delta=f"{evolution:+,.0f}",
+                delta_color=delta_color,
+                help="Évolution en pourcentage et valeur absolue"
+            )
+        
+        with kpi_col4:
+            avg_2025 = total_2025 / len(regions_to_show) if len(regions_to_show) > 0 else 0
+            avg_2024 = total_2024 / len(regions_to_show) if len(regions_to_show) > 0 else 0
+            avg_evolution_pct = ((avg_2025 - avg_2024) / avg_2024 * 100) if avg_2024 > 0 else 0
+            st.metric(
+                "📊 Moy. par Région 2025",
+                f"{avg_2025:,.0f}",
+                delta=f"{avg_evolution_pct:+.1f}%",
+                help="Moyenne par région en 2025"
+            )
+        
+        return  # Sortir de la fonction après le mode comparaison
+    
+    # ========== MODE VUE SIMPLE (Original) ==========
     st.markdown("### 📊 Analyse Simple")
     
     # Créer le graphique avec barres groupées par financeur
