@@ -1,0 +1,18 @@
+[theme]
+# Configuration du thème Streamlit
+# Définit le thème par défaut de l'application
+
+# Mode de base du thème ("light" ou "dark")
+base = "light"
+
+# Couleur de fond principale (optionnel)
+# backgroundColor = "#FFFFFF"
+
+# Couleur de fond secondaire (optionnel) 
+# secondaryBackgroundColor = "#F0F2F6"
+
+# Couleur du texte principal (optionnel)
+# textColor = "#262730"
+
+# Couleur primaire pour les éléments interactifs (optionnel)
+# primaryColor = "#FF6B6B"

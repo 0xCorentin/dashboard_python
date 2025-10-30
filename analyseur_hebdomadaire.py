@@ -3299,8 +3299,65 @@ def create_monthly_analysis_visualization(df):
             "Écart": "📊"
         }
         
+        # ========== AJOUTER COURBE MOYENNE POUR LES ENTRÉES ==========
+        monthly_averages = []
+        months_labels = []
+        
+        if analysis_type == "Entrées":
+            # Calculer les moyennes par mois
+            for month in months_to_show:
+                col_name = f'{month}_{analysis_type}'
+                # Calculer la moyenne de toutes les régions pour ce mois
+                month_values = []
+                for region in regions_to_show:
+                    region_data = df_filtered[df_filtered['Region'] == region].iloc[0]
+                    if col_name in region_data.index:
+                        value = region_data[col_name]
+                        if pd.notna(value) and value != 0:  # Exclure les valeurs nulles et zéros
+                            month_values.append(value)
+                
+                if month_values:  # Si on a des valeurs pour ce mois
+                    average = sum(month_values) / len(month_values)
+                    monthly_averages.append(average)
+                    months_labels.append(month)
+            
+            if monthly_averages and len(regions_to_show) > 0:
+                # Créer une courbe séparée au-dessus du graphique principal
+                # Utiliser des positions numériques pour avoir une vraie courbe
+                x_numeric = list(range(len(months_labels)))
+                
+                # Ajouter la courbe moyenne avec des positions numériques
+                fig.add_trace(go.Scatter(
+                    x=x_numeric,
+                    y=monthly_averages,
+                    mode='lines+markers+text',
+                    name='📈 Moyenne par Mois',
+                    line=dict(color='#e74c3c', width=4),
+                    marker=dict(size=12, color='#e74c3c', symbol='circle'),
+                    text=[f"{avg:.0f}" for avg in monthly_averages],
+                    textposition='top center',
+                    hovertemplate='<b>%{customdata}</b><br>Moyenne: %{y:.1f} entrées<extra></extra>',
+                    customdata=months_labels,
+                    yaxis='y2',  # Utiliser un axe secondaire pour la courbe
+                    xaxis='x2'   # Utiliser un axe X secondaire pour la courbe
+                ))
+                
+                # Configurer l'axe X secondaire pour la courbe
+                fig.update_layout(
+                    xaxis2=dict(
+                        overlaying='x',
+                        side='top',
+                        tickmode='array',
+                        tickvals=x_numeric,
+                        ticktext=months_labels,
+                        showgrid=False,
+                        title=dict(text="Mois (Courbe Moyenne)", font=dict(color="#e74c3c"))
+                    )
+                )
+        
         fig.update_layout(
-            title=f"{metric_emojis.get(analysis_type, '📊')} {analysis_type} par Région et Mois",
+            title=f"{metric_emojis.get(analysis_type, '📊')} {analysis_type} par Région et Mois" + 
+                  (" avec Courbe Moyenne" if analysis_type == "Entrées" else ""),
             xaxis_title="Régions",
             yaxis_title=f"Nombre de {analysis_type.lower()}",
             height=700,
@@ -3316,7 +3373,67 @@ def create_monthly_analysis_visualization(df):
             xaxis_tickangle=-45
         )
         
+        # Configuration de l'axe secondaire pour la courbe moyenne (si applicable)
+        if analysis_type == "Entrées":
+            fig.update_layout(
+                yaxis2=dict(
+                    title=dict(text="Moyenne par Région", font=dict(color="#e74c3c")),
+                    overlaying='y',
+                    side='right',
+                    showgrid=False,
+                    tickfont=dict(color="#e74c3c")
+                )
+            )
+        
         st.plotly_chart(fig, use_container_width=True)
+        
+        # ========== AFFICHAGE DES STATISTIQUES DE LA COURBE MOYENNE ==========
+        if analysis_type == "Entrées" and monthly_averages and months_labels:
+            st.markdown("---")
+            st.markdown("### 📈 Statistiques de la Courbe Moyenne des Entrées")
+            
+            col_avg1, col_avg2, col_avg3, col_avg4 = st.columns(4)
+            
+            # Moyenne générale
+            general_average = sum(monthly_averages) / len(monthly_averages)
+            with col_avg1:
+                st.metric(
+                    "📊 Moyenne Générale",
+                    f"{general_average:.1f}",
+                    help="Moyenne de toutes les moyennes mensuelles"
+                )
+            
+            # Meilleur mois
+            if monthly_averages and months_labels:
+                best_month_idx = monthly_averages.index(max(monthly_averages))
+                best_month = months_labels[best_month_idx]
+                best_value = monthly_averages[best_month_idx]
+                with col_avg2:
+                    st.metric(
+                        "🏆 Meilleur Mois",
+                        best_month,
+                        f"{best_value:.1f}"
+                    )
+                
+                # Mois le plus faible
+                worst_month_idx = monthly_averages.index(min(monthly_averages))
+                worst_month = months_labels[worst_month_idx]
+                worst_value = monthly_averages[worst_month_idx]
+                with col_avg3:
+                    st.metric(
+                        "📉 Mois le Plus Faible",
+                        worst_month,
+                        f"{worst_value:.1f}"
+                    )
+                
+                # Écart entre le meilleur et le pire
+                ecart = best_value - worst_value
+                with col_avg4:
+                    st.metric(
+                        "📏 Écart Max-Min",
+                        f"{ecart:.1f}",
+                        help="Différence entre le meilleur et le pire mois"
+                    )
     
     # ========== SECTION TOTAUX ==========
     st.markdown("---")
