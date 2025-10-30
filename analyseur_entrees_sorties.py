@@ -852,15 +852,15 @@ def create_monthly_analysis_visualization(df):
 def create_feuil3_visualization(df):
     """Crée la visualisation pour la Feuil3 : Régions en abscisse, barres par financeur"""
     
-    st.markdown("### 📊 Analyse par Région et Financeur (Feuil3)")
+    st.markdown("### 📊 Analyse par Région et Financeur")
     
     if df is None or df.empty:
-        st.warning("⚠️ Aucune donnée disponible dans la Feuil3")
+        st.warning("⚠️ Aucune donnée disponible dans la feuille 3")
         return
     
     # Vérifier les colonnes requises
     if 'REGION' not in df.columns or 'FINANCEURS' not in df.columns:
-        st.error("❌ Colonnes 'REGION' et 'FINANCEURS' requises dans la Feuil3")
+        st.error("❌ Colonnes 'REGION' et 'FINANCEURS' requises dans la feuille 3")
         return
     
     # Identifier les colonnes de métriques (toutes sauf REGION et FINANCEURS)
@@ -1132,7 +1132,7 @@ def create_feuil3_visualization(df):
         
         # ========== NOUVEAU GRAPHIQUE PAR FINANCEURS ==========
         st.markdown("---")
-        st.markdown("### 📊 Analyse Détaillée par Financeurs")
+        st.markdown("### 📊 Analyse hebdomadaire par financeurs")
         
         try:
             # Charger les données du fichier Excel spécifique
@@ -1170,6 +1170,39 @@ def create_feuil3_visualization(df):
             df_financeurs_filtered = df_financeurs[df_financeurs['REGION'].isin(regions_to_show)].copy()
             
             if not df_financeurs_filtered.empty:
+                # ========== FILTRE RÉGION FOCUS ==========
+                st.markdown("### 🎯 Options d'Affichage")
+                
+                col_filter1, col_filter2 = st.columns(2)
+                
+                with col_filter1:
+                    # Option pour focus sur une région spécifique
+                    all_available_regions = sorted(df_financeurs_filtered['REGION'].unique().tolist())
+                    focus_region = st.selectbox(
+                        "🔍 Focus sur une région spécifique:",
+                        options=['Toutes les régions'] + all_available_regions,
+                        index=0,
+                        key="focus_region_financeurs",
+                        help="Sélectionnez une région pour voir uniquement ses données détaillées"
+                    )
+                
+                with col_filter2:
+                    # Option pour l'ordre d'affichage
+                    sort_option = st.selectbox(
+                        "📊 Ordre d'affichage:",
+                        options=['Par total 2025 (décroissant)', 'Par nom de région (A-Z)', 'Par écart (décroissant)'],
+                        index=0,
+                        key="sort_option_financeurs",
+                        help="Choisissez l'ordre d'affichage des régions"
+                    )
+                
+                # Appliquer le filtre région focus
+                if focus_region != 'Toutes les régions':
+                    df_financeurs_display = df_financeurs_filtered[df_financeurs_filtered['REGION'] == focus_region].copy()
+                    st.info(f"🎯 Focus sur la région : **{focus_region}**")
+                else:
+                    df_financeurs_display = df_financeurs_filtered.copy()
+                
                 # Créer le graphique par financeurs
                 fig_financeurs = go.Figure()
                 
@@ -1182,177 +1215,148 @@ def create_feuil3_visualization(df):
                     'Marché Public': '#FFEAA7'
                 }
                 
-                # Ordre des régions par total 2025 décroissant
-                region_totals_financeurs = df_financeurs_filtered.groupby('REGION')['Entrées 2025'].sum().sort_values(ascending=False)
-                region_order_financeurs = region_totals_financeurs.index.tolist()
+                # Ordre des régions selon l'option choisie
+                if sort_option == 'Par total 2025 (décroissant)':
+                    region_totals_financeurs = df_financeurs_display.groupby('REGION')['Entrées 2025'].sum().sort_values(ascending=False)
+                    region_order_financeurs = region_totals_financeurs.index.tolist()
+                elif sort_option == 'Par nom de région (A-Z)':
+                    region_order_financeurs = sorted(df_financeurs_display['REGION'].unique().tolist())
+                else:  # Par écart
+                    region_totals_ecart = df_financeurs_display.groupby('REGION')['Écart'].sum().sort_values(ascending=False)
+                    region_order_financeurs = region_totals_ecart.index.tolist()
                 
-                # Créer deux graphiques séparés : un pour 2024 et un pour 2025
+                # ========== GRAPHIQUE UNIFIÉ : BARRES 2024, 2025 et ÉCART CÔTE À CÔTE ==========
+                st.markdown("#### 📊 Analyse Complète : 2024, 2025 et Évolution par Financeur")
                 
-                # ========== GRAPHIQUE 2024 ==========
-                st.markdown("#### 📅 Année 2024")
-                fig_2024 = go.Figure()
+                # Créer un graphique unique avec toutes les barres groupées
+                fig_unified = go.Figure()
                 
-                for i, financeur in enumerate(df_financeurs_filtered['FINANCEURS'].unique()):
-                    df_fin = df_financeurs_filtered[df_financeurs_filtered['FINANCEURS'] == financeur]
+                # Pour chaque financeur, on va créer 3 séries de barres (2024, 2025, Écart)
+                financeurs_list = df_financeurs_display['FINANCEURS'].unique()
+                
+                for i, financeur in enumerate(financeurs_list):
+                    df_fin = df_financeurs_display[df_financeurs_display['FINANCEURS'] == financeur]
                     
                     regions_fin = []
-                    values_fin = []
+                    values_2024 = []
+                    values_2025 = []
+                    values_ecart = []
                     
                     for region in region_order_financeurs:
                         region_data = df_fin[df_fin['REGION'] == region]
                         if not region_data.empty:
                             regions_fin.append(region)
-                            values_fin.append(region_data['Entrées 2024'].iloc[0])
+                            values_2024.append(region_data['Entrées 2024'].iloc[0])
+                            values_2025.append(region_data['Entrées 2025'].iloc[0])
+                            values_ecart.append(region_data['Écart'].iloc[0])
                     
                     if regions_fin:
                         color_base = financeur_colors.get(financeur, '#999999')
                         
-                        fig_2024.add_trace(go.Bar(
-                            x=regions_fin,
-                            y=values_fin,
-                            name=financeur,
-                            marker_color=color_base,
-                            text=[f"{val:,.0f}" for val in values_fin],
-                            textposition='outside',
-                            hovertemplate=f'<b>{financeur}</b><br>2024: %{{y:,.0f}}<br>Région: %{{x}}<extra></extra>'
-                        ))
-                
-                fig_2024.update_layout(
-                    title="📊 Entrées par Financeur - Année 2024",
-                    xaxis_title="Régions",
-                    yaxis_title="Nombre de stagiaires entrés",
-                    height=600,
-                    barmode='group',
-                    hovermode='x unified',
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="center",
-                        x=0.5
-                    ),
-                    xaxis_tickangle=-45
-                )
-                
-                st.plotly_chart(fig_2024, use_container_width=True)
-                
-                # ========== GRAPHIQUE 2025 ==========
-                st.markdown("#### 📅 Année 2025")
-                fig_2025 = go.Figure()
-                
-                for i, financeur in enumerate(df_financeurs_filtered['FINANCEURS'].unique()):
-                    df_fin = df_financeurs_filtered[df_financeurs_filtered['FINANCEURS'] == financeur]
-                    
-                    regions_fin = []
-                    values_fin = []
-                    
-                    for region in region_order_financeurs:
-                        region_data = df_fin[df_fin['REGION'] == region]
-                        if not region_data.empty:
-                            regions_fin.append(region)
-                            values_fin.append(region_data['Entrées 2025'].iloc[0])
-                    
-                    if regions_fin:
-                        color_base = financeur_colors.get(financeur, '#999999')
+                        # Définir les couleurs pour 2024, 2025 et Écart
+                        # On utilise des variations de la couleur de base pour 2024 et 2025
+                        # Import de colorsys pour ajuster la luminosité
+                        import colorsys
                         
-                        fig_2025.add_trace(go.Bar(
+                        def adjust_brightness(hex_color, factor):
+                            """Ajuste la luminosité d'une couleur hexadécimale"""
+                            # Convertir hex en RGB
+                            hex_color = hex_color.lstrip('#')
+                            r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                            # Convertir en HSL
+                            h, l, s = colorsys.rgb_to_hls(r/255, g/255, b/255)
+                            # Ajuster la luminosité
+                            l = max(0, min(1, l * factor))
+                            # Reconvertir en RGB
+                            r, g, b = colorsys.hls_to_rgb(h, l, s)
+                            return f'#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}'
+                        
+                        color_2024 = adjust_brightness(color_base, 0.7)  # Plus foncé pour 2024
+                        color_2025 = color_base  # Couleur normale pour 2025
+                        
+                        # Barres 2024 (couleur plus foncée)
+                        fig_unified.add_trace(go.Bar(
                             x=regions_fin,
-                            y=values_fin,
-                            name=financeur,
-                            marker_color=color_base,
-                            text=[f"{val:,.0f}" for val in values_fin],
+                            y=values_2024,
+                            name=f'{financeur} - 2024',
+                            marker_color=color_2024,
+                            text=[f"{val:,.0f}" for val in values_2024],
                             textposition='outside',
-                            hovertemplate=f'<b>{financeur}</b><br>2025: %{{y:,.0f}}<br>Région: %{{x}}<extra></extra>'
+                            hovertemplate=f'<b>{financeur} - 2024</b><br>Région: %{{x}}<br>Entrées: %{{y:,.0f}}<extra></extra>',
+                            legendgroup=financeur,
+                            legendgrouptitle_text=financeur
                         ))
-                
-                fig_2025.update_layout(
-                    title="📊 Entrées par Financeur - Année 2025",
-                    xaxis_title="Régions",
-                    yaxis_title="Nombre de stagiaires entrés",
-                    height=600,
-                    barmode='group',
-                    hovermode='x unified',
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="center",
-                        x=0.5
-                    ),
-                    xaxis_tickangle=-45
-                )
-                
-                st.plotly_chart(fig_2025, use_container_width=True)
-                
-                # ========== GRAPHIQUE ÉCART (2025 - 2024) ==========
-                st.markdown("#### 📊 Évolution (Écart 2025-2024)")
-                fig_ecart = go.Figure()
-                
-                for i, financeur in enumerate(df_financeurs_filtered['FINANCEURS'].unique()):
-                    df_fin = df_financeurs_filtered[df_financeurs_filtered['FINANCEURS'] == financeur]
-                    
-                    regions_fin = []
-                    values_fin = []
-                    
-                    for region in region_order_financeurs:
-                        region_data = df_fin[df_fin['REGION'] == region]
-                        if not region_data.empty:
-                            regions_fin.append(region)
-                            values_fin.append(region_data['Écart'].iloc[0])
-                    
-                    if regions_fin:
-                        # Couleur orange pour les écarts, avec différentes nuances par financeur
-                        base_orange = '#FFB347'
+                        
+                        # Barres 2025 (couleur normale)
+                        fig_unified.add_trace(go.Bar(
+                            x=regions_fin,
+                            y=values_2025,
+                            name=f'{financeur} - 2025',
+                            marker_color=color_2025,
+                            text=[f"{val:,.0f}" for val in values_2025],
+                            textposition='outside',
+                            hovertemplate=f'<b>{financeur} - 2025</b><br>Région: %{{x}}<br>Entrées: %{{y:,.0f}}<extra></extra>',
+                            legendgroup=financeur
+                        ))
+                        
+                        # Barres Écart (couleur orange)
+                        # Choisir une nuance d'orange pour chaque financeur
                         if i == 0:
-                            marker_color = '#FF8C00'  # Orange foncé
+                            ecart_color = '#FF8C00'
                         elif i == 1:
-                            marker_color = '#FFB347'  # Orange moyen
+                            ecart_color = '#FFB347'
                         elif i == 2:
-                            marker_color = '#FFA500'  # Orange
+                            ecart_color = '#FFA500'
                         elif i == 3:
-                            marker_color = '#FF7F50'  # Coral
+                            ecart_color = '#FF7F50'
                         else:
-                            marker_color = '#FF6347'  # Tomato
+                            ecart_color = '#FF6347'
                         
-                        fig_ecart.add_trace(go.Bar(
+                        fig_unified.add_trace(go.Bar(
                             x=regions_fin,
-                            y=values_fin,
-                            name=financeur,
-                            marker_color=marker_color,
-                            text=[f"{val:+,.0f}" for val in values_fin],
+                            y=values_ecart,
+                            name=f'{financeur} - Écart',
+                            marker_color=ecart_color,
+                            text=[f"{val:+,.0f}" for val in values_ecart],
                             textposition='outside',
-                            hovertemplate=f'<b>{financeur}</b><br>Écart (2025-2024): %{{y:+,.0f}}<br>Région: %{{x}}<extra></extra>'
+                            hovertemplate=f'<b>{financeur} - Écart</b><br>Région: %{{x}}<br>Évolution: %{{y:+,.0f}}<extra></extra>',
+                            legendgroup=financeur
                         ))
                 
-                fig_ecart.update_layout(
-                    title="📊 Évolution par Financeur - Écart (2025-2024)",
+                # Mise à jour du layout
+                fig_unified.update_layout(
+                    title={
+                        'text': "📊 Analyse Hebdomadaire Complète par Financeur - 2024, 2025 et Évolution",
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 20, 'color': '#2c3e50'}
+                    },
                     xaxis_title="Régions",
-                    yaxis_title="Écart (Nombre de stagiaires)",
-                    height=600,
-                    barmode='group',
+                    yaxis_title="Nombre de stagiaires",
+                    height=800,
+                    barmode='group',  # Barres groupées côte à côte
                     hovermode='x unified',
                     legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="center",
-                        x=0.5
+                        orientation="v",
+                        yanchor="top",
+                        y=1,
+                        xanchor="left",
+                        x=1.02,
+                        groupclick="toggleitem"
                     ),
                     xaxis_tickangle=-45,
-                    # Ajouter une ligne de référence à y=0
-                    shapes=[
-                        dict(
-                            type="line",
-                            x0=-0.5,
-                            y0=0,
-                            x1=len(region_order_financeurs)-0.5,
-                            y1=0,
-                            line=dict(color="black", width=2, dash="dash")
-                        )
-                    ]
+                    showlegend=True
                 )
                 
-                st.plotly_chart(fig_ecart, use_container_width=True)
+                # Ajouter une ligne de référence à y=0
+                fig_unified.add_hline(
+                    y=0, 
+                    line_dash="dash", 
+                    line_color="rgba(0,0,0,0.3)", 
+                    line_width=1
+                )
+                
+                st.plotly_chart(fig_unified, use_container_width=True)
                 
             else:
                 st.warning("⚠️ Aucune donnée financeur disponible pour les régions sélectionnées")
@@ -1649,7 +1653,7 @@ def show_entrees_sorties_analysis():
         return
     
     # Chargement des données selon la méthode choisie
-    # Pour l'analyse par financeurs, on utilise toujours Feuil1
+    # Pour l'analyse hebdomadaire par financeurs, on utilise toujours Feuil1
     if import_method == "Upload d'un nouveau fichier":
         df, error = load_entrees_sorties_data(uploaded_file=uploaded_file, sheet_name="Feuil1")
     else:  # Chemin personnalisé
@@ -1714,7 +1718,7 @@ def show_entrees_sorties_analysis():
     st.markdown("---")
     
     # Onglets d'analyse
-    tab1, tab2, tab3 = st.tabs(["📊 Analyse par Financeurs", "📅 Analyse Mensuelle", "📈 Comparatif Annuel"])
+    tab1, tab2, tab3 = st.tabs(["📊 Analyse hebdomadaire par financeurs", "📅 Analyse Mensuelle", "📈 Comparatif Annuel"])
     
     with tab1:
         st.markdown("### 💰 Analyse des flux par région et financeur")
@@ -1759,7 +1763,7 @@ def show_entrees_sorties_analysis():
                 """)
     
     with tab3:
-        st.markdown("### 📈 Analyse par Région et Financeur (Feuil3)")
+
         try:
             # Charger les données de la Feuil3
             if import_method == "Upload d'un nouveau fichier":

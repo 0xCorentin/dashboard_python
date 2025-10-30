@@ -1629,7 +1629,7 @@ def create_cumulative_curve_new(df, production_cols):
         return
     
     # Options de configuration
-    col_config1, col_config2, col_config3 = st.columns(3)
+    col_config1, col_config2, col_config3, col_config4 = st.columns(4)
     
     with col_config1:
         regions_to_show = st.multiselect(
@@ -1653,6 +1653,15 @@ def create_cumulative_curve_new(df, production_cols):
             ["Décroissant (Plus grand → Plus petit)", "Croissant (Plus petit → Plus grand)", "Alphabétique (A → Z)"],
             index=0,  # Décroissant par défaut
             key="region_sort_order"
+        )
+    
+    with col_config4:
+        financeurs_with_labels = st.multiselect(
+            "🔢 Afficher % pour:",
+            df_viz['FINANCEURS'].unique().tolist(),
+            default=df_viz['FINANCEURS'].unique().tolist(),  # Tous les financeurs par défaut
+            key="financeurs_labels",
+            help="Sélectionnez les financeurs pour lesquels afficher les pourcentages sur les barres"
         )
     
     # Boutons de contrôle rapide des filtres
@@ -1745,14 +1754,18 @@ def create_cumulative_curve_new(df, production_cols):
                 percentage = (financeur_value / region_total * 100) if region_total > 0 else 0
                 percentages_ordered.append(percentage)
         
+        # Déterminer si on affiche les pourcentages pour ce financeur
+        show_text = financeur in financeurs_with_labels
+        
         if regions_ordered:  # Seulement si on a des données pour ce financeur
             fig.add_trace(go.Bar(
                 x=regions_ordered,  # Régions en X dans l'ordre choisi
                 y=percentages_ordered,   # Pourcentage en Y
                 name=financeur,
                 marker_color=colors[i % len(colors)],
-                text=[f"{val:.1f}%" for val in percentages_ordered],
-                textposition='outside',
+                text=[f"<b>{val:.1f}%</b>" for val in percentages_ordered] if show_text else None,  # Afficher les % seulement si sélectionné
+                textposition='outside' if show_text else None,
+                textfont=dict(size=20) if show_text else None,  # Taille de police augmentée
                 offsetgroup=i  # Groupes distincts pour chaque financeur
             ))
     
@@ -1780,7 +1793,7 @@ def create_cumulative_curve_new(df, production_cols):
             title="Part de Production (%)",
             tickformat=".0f",
             ticksuffix="%",
-            range=[0, 110]  # Limite à 110% pour laisser de l'espace aux labels
+            range=[0, 120]  # Augmenté pour laisser plus d'espace aux labels plus grands
         ),
         yaxis2=dict(
             title="Total par Région (100%)",
@@ -1799,7 +1812,8 @@ def create_cumulative_curve_new(df, production_cols):
             xanchor="right",
             x=1
         ),
-        xaxis_tickangle=-45  # Rotation des noms de régions
+        xaxis_tickangle=-45,  # Rotation des noms de régions
+        uniformtext=dict(mode='show', minsize=20)  # Force l'affichage du texte avec une taille minimale
     )
     
     st.plotly_chart(fig, use_container_width=True)
