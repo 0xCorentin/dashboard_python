@@ -611,6 +611,94 @@ def create_monthly_analysis_visualization(df):
                 hovertemplate=f'<b>{month}</b><br>%{{x}}: %{{y:,.0f}}<extra></extra>'
             ))
         
+        # ========== AJOUTER LA COURBE DE MOYENNE SI C'EST "ENTRÉES" ==========
+        if analysis_type == "Entrées":
+            # Calculer la moyenne des entrées pour chaque région sur tous les mois
+            region_averages = []
+            region_names = []
+            
+            for region in regions_to_show:
+                region_data = df_filtered[df_filtered['Region'] == region]
+                if not region_data.empty:
+                    region_row = region_data.iloc[0]
+                    
+                    # Calculer la moyenne des entrées sur tous les mois sélectionnés
+                    total_entries = 0
+                    valid_months = 0
+                    
+                    for month in months_to_show:
+                        col_name = f'{month}_Entrées'
+                        if col_name in region_row.index and pd.notna(region_row[col_name]):
+                            total_entries += region_row[col_name]
+                            valid_months += 1
+                    
+                    if valid_months > 0:
+                        average = total_entries / valid_months
+                        region_averages.append(average)
+                        region_names.append(region)
+            
+            if region_averages:
+                # Calculer un décalage pour éviter que les textes se chevauchent avec la courbe
+                max_bar_value = 0
+                for month in months_to_show:
+                    for region in regions_to_show:
+                        region_data = df_filtered[df_filtered['Region'] == region]
+                        if not region_data.empty:
+                            col_name = f'{month}_Entrées'
+                            if col_name in region_data.iloc[0].index:
+                                value = region_data.iloc[0][col_name]
+                                max_bar_value = max(max_bar_value, value)
+                
+                # Décaler les moyennes vers le haut pour éviter les chevauchements
+                text_offset = max_bar_value * 0.08  # 8% du max pour le décalage
+                adjusted_averages = [avg + text_offset for avg in region_averages]
+                
+                # Ajouter la courbe de moyenne sur le même graphique
+                fig.add_trace(go.Scatter(
+                    x=region_names,
+                    y=region_averages,
+                    mode='lines+markers',
+                    name='📊 Moyenne des Entrées',
+                    line=dict(color='#FF4444', width=4, dash='solid'),
+                    marker=dict(
+                        size=12,
+                        color='#FF4444',
+                        symbol='diamond',
+                        line=dict(width=3, color='white')
+                    ),
+                    hovertemplate='<b>%{x}</b><br>Moyenne: %{y:,.0f} entrées<br><i>Calculée sur ' + str(len(months_to_show)) + ' mois</i><extra></extra>',
+                    yaxis='y2'  # Utiliser un axe Y secondaire pour la courbe
+                ))
+                
+                # Ajouter les textes des moyennes séparément avec décalage
+                fig.add_trace(go.Scatter(
+                    x=region_names,
+                    y=adjusted_averages,
+                    mode='text',
+                    name='Valeurs Moyennes',
+                    text=[f"{avg:,.0f}" for avg in region_averages],
+                    textposition='middle center',
+                    textfont=dict(
+                        color='#FF4444', 
+                        size=12, 
+                        family='Arial Black'
+                    ),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    yaxis='y2'
+                ))
+                
+                # Configurer l'axe Y secondaire pour la courbe
+                fig.update_layout(
+                    yaxis2=dict(
+                        title="Moyenne des Entrées",
+                        overlaying='y',
+                        side='right',
+                        showgrid=False,
+                        color='#2E86AB'
+                    )
+                )
+        
         metric_emojis = {
             "Entrées": "📥", 
             "Sorties": "📤", 
@@ -618,8 +706,10 @@ def create_monthly_analysis_visualization(df):
             "Écart": "📊"
         }
         
+        title_suffix = " avec Courbe de Moyenne" if analysis_type == "Entrées" else ""
+        
         fig.update_layout(
-            title=f"{metric_emojis.get(analysis_type, '📊')} {analysis_type} par Région et Mois",
+            title=f"{metric_emojis.get(analysis_type, '📊')} {analysis_type} par Région et Mois{title_suffix}",
             xaxis_title="Régions",
             yaxis_title=f"Nombre de {analysis_type.lower()}",
             height=700,
