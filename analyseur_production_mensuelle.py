@@ -77,10 +77,12 @@ def create_cumulative_curve_new(df, production_cols):
         )
     
     with col_config4:
+        # Définir Marché Public comme valeur par défaut
+        default_financeur = ['Marché Public'] if 'Marché Public' in df_viz['FINANCEURS'].unique() else []
         financeurs_with_labels = st.multiselect(
             "🔢 Afficher % pour:",
             df_viz['FINANCEURS'].unique().tolist(),
-            default=df_viz['FINANCEURS'].unique().tolist(),  # Tous les financeurs par défaut
+            default=default_financeur,  # Uniquement Marché Public par défaut
             key="financeurs_labels",
             help="Sélectionnez les financeurs pour lesquels afficher les pourcentages sur les barres"
         )
