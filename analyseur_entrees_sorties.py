@@ -1411,6 +1411,118 @@ def create_feuil3_visualization(df):
                 help="Moyenne par région en 2025"
             )
         
+        # ========== NOUVEAU TABLEAU KPI PAR RÉGION ==========
+        st.markdown("---")
+        st.markdown("### 📊 KPI Détaillés par Région - Tableau de Bord Complet")
+        
+        # Préparer les données du tableau
+        kpi_table_data = []
+        
+        for region in region_order:
+            region_data = df_filtered[df_filtered['REGION'] == region]
+            if not region_data.empty:
+                val_2024 = region_data[col_2024].sum() if col_2024 in region_data.columns else 0
+                val_2025 = region_data[col_2025].sum() if col_2025 in region_data.columns else 0
+                ecart = val_2025 - val_2024
+                evolution_pct_region = (ecart / val_2024 * 100) if val_2024 > 0 else 0
+                
+                # Déterminer le statut (croissance/décroissance)
+                if ecart > 0:
+                    statut = "📈 Croissance"
+                    statut_emoji = "📈"
+                elif ecart < 0:
+                    statut = "📉 Décroissance"
+                    statut_emoji = "📉"
+                else:
+                    statut = "➡️ Stable"
+                    statut_emoji = "➡️"
+                
+                kpi_table_data.append({
+                    'Région': region,
+                    'Total 2024': val_2024,
+                    'Total 2025': val_2025,
+                    'Écart': ecart,
+                    'Évolution (%)': evolution_pct_region,
+                    'Statut': statut,
+                    'Tendance': statut_emoji
+                })
+        
+        # Créer le DataFrame
+        df_kpi = pd.DataFrame(kpi_table_data)
+        
+        # Trier par évolution décroissante pour mettre les croissances en haut
+        df_kpi_sorted = df_kpi.sort_values('Évolution (%)', ascending=False).reset_index(drop=True)
+        
+        # Configuration des colonnes pour l'affichage
+        column_config_kpi = {
+            'Région': st.column_config.TextColumn(
+                'Région',
+                width='large',
+                help="Nom de la région"
+            ),
+            'Total 2024': st.column_config.NumberColumn(
+                'Total 2024',
+                format="%.0f",
+                help="Valeur totale en 2024"
+            ),
+            'Total 2025': st.column_config.NumberColumn(
+                'Total 2025',
+                format="%.0f",
+                help="Valeur totale en 2025"
+            ),
+            'Écart': st.column_config.NumberColumn(
+                'Écart (2025-2024)',
+                format="%+.0f",
+                help="Différence entre 2025 et 2024"
+            ),
+            'Évolution (%)': st.column_config.NumberColumn(
+                'Évolution (%)',
+                format="%.1f%%",
+                help="Pourcentage d'évolution"
+            ),
+            'Statut': st.column_config.TextColumn(
+                'Statut',
+                width='medium',
+                help="Tendance: Croissance, Décroissance ou Stable"
+            ),
+            'Tendance': st.column_config.TextColumn(
+                'Tendance',
+                width='small'
+            )
+        }
+        
+        # Afficher le tableau avec style
+        st.markdown("""
+        <style>
+        .kpi-info {
+            padding: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown(f"""
+        <div class="kpi-info">
+            <h4>📊 Tableau de Bord KPI - {comparison_metric}</h4>
+            <p><strong>Régions en croissance:</strong> {len(df_kpi[df_kpi['Écart'] > 0])} | 
+            <strong>Régions en décroissance:</strong> {len(df_kpi[df_kpi['Écart'] < 0])} | 
+            <strong>Régions stables:</strong> {len(df_kpi[df_kpi['Écart'] == 0])}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Afficher le tableau
+        st.dataframe(
+            df_kpi_sorted,
+            use_container_width=True,
+            column_config=column_config_kpi,
+            hide_index=True,
+            height=min(600, (len(df_kpi_sorted) + 1) * 35 + 38)
+        )
+        
         return  # Sortir de la fonction après le mode comparaison
     
     # ========== MODE VUE SIMPLE (Original) ==========

@@ -124,7 +124,7 @@ def create_financeurs_visualization(df):
                         val = df_financeur.loc[region, 'HTS_Realisees']
                         # Convertir en nombre Python natif
                         if pd.notna(val):
-                            y_values.append(float(val))
+                            y_values.append(pd.to_numeric(val, errors='coerce'))
                         else:
                             y_values.append(0)
                     else:
@@ -153,7 +153,7 @@ def create_financeurs_visualization(df):
                         val = df_financeur.loc[region, 'Budget_Septembre']
                         # Convertir en nombre Python natif
                         if pd.notna(val):
-                            y_values.append(float(val))
+                            y_values.append(pd.to_numeric(val, errors='coerce'))
                         else:
                             y_values.append(0)
                     else:
@@ -339,8 +339,9 @@ def create_financeurs_visualization_decembre(df):
             try:
                 if region in df_financeur.index.tolist():
                     val = df_financeur.loc[region, 'Total_HTS_Suites']
+                    # Convertir en nombre Python natif
                     if pd.notna(val):
-                        y_values_hts.append(float(val))
+                        y_values_hts.append(pd.to_numeric(val, errors='coerce'))
                     else:
                         y_values_hts.append(0)
                 else:
@@ -366,7 +367,7 @@ def create_financeurs_visualization_decembre(df):
                 if region in df_financeur.index.tolist():
                     val = df_financeur.loc[region, 'Budget_Decembre']
                     if pd.notna(val):
-                        y_values_budget.append(float(val))
+                        y_values_budget.append(pd.to_numeric(val, errors='coerce'))
                     else:
                         y_values_budget.append(0)
                 else:
@@ -392,7 +393,7 @@ def create_financeurs_visualization_decembre(df):
                 if region in df_financeur.index.tolist():
                     val = df_financeur.loc[region, 'Reste_A_Faire']
                     if pd.notna(val):
-                        y_values_reste.append(float(val))
+                        y_values_reste.append(pd.to_numeric(val, errors='coerce'))
                     else:
                         y_values_reste.append(0)
                 else:
