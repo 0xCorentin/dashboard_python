@@ -13,6 +13,626 @@ from datetime import datetime
 # Import des fonctions utilitaires
 from utils import load_landing_data
 
+def create_financeurs_visualization(df):
+    """Crée la visualisation par financeurs et régions"""
+    
+    st.markdown("### 💰 Analyse par Régions et Financeurs")
+    
+    # Identifier les financeurs
+    financeurs_list = ['B2C - CPF', 'B2C - CPFT', "Marché de l'Alternance", 
+                       'Marché des Entreprises', 'Marché Public']
+    
+    # Restructurer les données : associer chaque financeur à sa région
+    data_restructured = []
+    current_region = None
+    
+    for idx, row in df.iterrows():
+        region_name = row['Régions']
+        
+        # Si c'est une région (pas un financeur)
+        if region_name not in financeurs_list:
+            # Vérifier que ce n'est pas un total
+            if not pd.isna(region_name) and not any(x in str(region_name).lower() for x in ['total', 'ensemble', 'dispositif national']):
+                current_region = region_name
+        # Si c'est un financeur et qu'on a une région courante
+        elif current_region is not None and region_name in financeurs_list:
+            data_restructured.append({
+                'Region': current_region,
+                'Financeur': region_name,
+                'HTS_Realisees': row['HTS REALISEES TOTALES (AVEC PAE)'],
+                'Budget_Septembre': row['BUDGET A FIN SEPTEMBRE']
+            })
+    
+    # Créer un DataFrame restructuré
+    df_restructured = pd.DataFrame(data_restructured)
+    
+    if df_restructured.empty:
+        st.warning("⚠️ Aucune donnée à afficher")
+        return
+    
+    # Remplacer les valeurs '-' par 0
+    df_restructured['HTS_Realisees'] = pd.to_numeric(df_restructured['HTS_Realisees'], errors='coerce').fillna(0)
+    df_restructured['Budget_Septembre'] = pd.to_numeric(df_restructured['Budget_Septembre'], errors='coerce').fillna(0)
+    
+    # Options de configuration
+    col_config1, col_config2, col_config3 = st.columns(3)
+    
+    with col_config1:
+        regions_disponibles = sorted(df_restructured['Region'].unique().tolist())
+        regions_to_show = st.multiselect(
+            "🏷️ Régions à afficher:",
+            regions_disponibles,
+            default=regions_disponibles,  # Toutes les régions par défaut
+            key="financeurs_regions"
+        )
+    
+    with col_config2:
+        metric_choice = st.selectbox(
+            "📊 Métrique à afficher:",
+            ["HTS Réalisées", "Budget Septembre", "Les deux"],
+            key="metric_choice"
+        )
+    
+    with col_config3:
+        sort_order = st.selectbox(
+            "� Ordre d'affichage:",
+            ["HTS Réalisées décroissant", "Budget Septembre décroissant", "Alphabétique"],
+            key="financeurs_sort"
+        )
+    
+    # Filtrer selon les régions sélectionnées
+    df_viz = df_restructured[df_restructured['Region'].isin(regions_to_show)].copy()
+    
+    if df_viz.empty:
+        st.warning("⚠️ Aucune donnée à afficher avec les filtres sélectionnés")
+        return
+    
+    # Calculer le total par région pour le tri
+    region_totals = df_viz.groupby('Region').agg({
+        'HTS_Realisees': 'sum',
+        'Budget_Septembre': 'sum'
+    }).reset_index()
+    
+    # Tri selon la sélection
+    if sort_order == "HTS Réalisées décroissant":
+        region_order = region_totals.sort_values('HTS_Realisees', ascending=False)['Region'].tolist()
+    elif sort_order == "Budget Septembre décroissant":
+        region_order = region_totals.sort_values('Budget_Septembre', ascending=False)['Region'].tolist()
+    else:  # Alphabétique
+        region_order = sorted(regions_to_show)
+    
+    # Créer le graphique
+    fig = go.Figure()
+    
+    # Couleurs pour les financeurs
+    financeur_colors = {
+        'B2C - CPF': '#3498db',
+        'B2C - CPFT': '#2ecc71',
+        "Marché de l'Alternance": '#9b59b6',
+        'Marché des Entreprises': '#e74c3c',
+        'Marché Public': '#f39c12'
+    }
+    
+    # Ajouter les barres pour chaque financeur
+    if metric_choice in ["HTS Réalisées", "Les deux"]:
+        for financeur in financeurs_list:
+            df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
+            y_values = []
+            for region in region_order:
+                try:
+                    if region in df_financeur.index.tolist():
+                        val = df_financeur.loc[region, 'HTS_Realisees']
+                        # Convertir en nombre Python natif
+                        if pd.notna(val):
+                            y_values.append(float(val))
+                        else:
+                            y_values.append(0)
+                    else:
+                        y_values.append(0)
+                except:
+                    y_values.append(0)
+            
+            fig.add_trace(go.Bar(
+                name=f'{financeur} (HTS)',
+                x=region_order,
+                y=y_values,
+                marker_color=financeur_colors.get(financeur, '#34495e'),
+                text=[f"{v:,.0f}" if v > 0 else "" for v in y_values],
+                textposition='inside',
+                legendgroup=financeur,
+                showlegend=True
+            ))
+    
+    if metric_choice in ["Budget Septembre", "Les deux"]:
+        for financeur in financeurs_list:
+            df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
+            y_values = []
+            for region in region_order:
+                try:
+                    if region in df_financeur.index.tolist():
+                        val = df_financeur.loc[region, 'Budget_Septembre']
+                        # Convertir en nombre Python natif
+                        if pd.notna(val):
+                            y_values.append(float(val))
+                        else:
+                            y_values.append(0)
+                    else:
+                        y_values.append(0)
+                except:
+                    y_values.append(0)
+            
+            # Si on affiche les deux, ajouter un pattern pour différencier
+            if metric_choice == "Les deux":
+                name_suffix = ' (Budget)'
+            else:
+                name_suffix = ''
+            
+            fig.add_trace(go.Bar(
+                name=f'{financeur}{name_suffix}',
+                x=region_order,
+                y=y_values,
+                marker_color=financeur_colors.get(financeur, '#34495e'),
+                text=[f"{v:,.0f}" if v > 0 else "" for v in y_values],
+                textposition='inside',
+                legendgroup=financeur if metric_choice == "Budget Septembre" else f'{financeur}_budget',
+                showlegend=True,
+                opacity=0.7 if metric_choice == "Les deux" else 1.0
+            ))
+    
+    # Configuration du graphique
+    title = "💰 "
+    if metric_choice == "HTS Réalisées":
+        title += "HTS Réalisées par Région et Financeur"
+    elif metric_choice == "Budget Septembre":
+        title += "Budget Septembre par Région et Financeur"
+    else:
+        title += "HTS Réalisées vs Budget Septembre par Région et Financeur"
+    
+    fig.update_layout(
+        title=title,
+        xaxis_title="Régions",
+        yaxis_title="Heures",
+        height=700,
+        barmode='group',  # Barres groupées côte à côte pour chaque financeur
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
+        ),
+        xaxis_tickangle=-45,
+        yaxis=dict(tickformat=',')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Statistiques récapitulatives
+    create_financeurs_statistics(df_restructured, regions_to_show)
+
+def create_financeurs_visualization_decembre(df):
+    """Crée la visualisation par financeurs et régions pour décembre"""
+    
+    st.markdown("### 📅 Analyse Décembre - Total HTS & Suites de Parcours")
+    
+    # Identifier les financeurs
+    financeurs_list = ['B2C - CPF', 'B2C - CPFT', "Marché de l'Alternance", 
+                       'Marché des Entreprises', 'Marché Public']
+    
+    # Restructurer les données : associer chaque financeur à sa région
+    data_restructured = []
+    current_region = None
+    
+    for idx, row in df.iterrows():
+        region_name = row['Régions']
+        
+        # Si c'est une région (pas un financeur)
+        if region_name not in financeurs_list:
+            # Vérifier que ce n'est pas un total
+            if not pd.isna(region_name) and not any(x in str(region_name).lower() for x in ['total', 'ensemble', 'dispositif national']):
+                current_region = region_name
+        # Si c'est un financeur et qu'on a une région courante
+        elif current_region is not None and region_name in financeurs_list:
+            data_restructured.append({
+                'Region': current_region,
+                'Financeur': region_name,
+                'Total_HTS_Suites': row['TOTAL HTS & SUITES DE PARCOURS'],
+                'Budget_Decembre': row['BUDGET A FIN DECEMBRE'],
+                'Reste_A_Faire': row['RESTE A FAIRE / NOUVELLES ENTREES']
+            })
+    
+    # Créer un DataFrame restructuré
+    df_restructured = pd.DataFrame(data_restructured)
+    
+    if df_restructured.empty:
+        st.warning("⚠️ Aucune donnée à afficher")
+        return
+    
+    # Remplacer les valeurs '-' par 0
+    df_restructured['Total_HTS_Suites'] = pd.to_numeric(df_restructured['Total_HTS_Suites'], errors='coerce').fillna(0)
+    df_restructured['Budget_Decembre'] = pd.to_numeric(df_restructured['Budget_Decembre'], errors='coerce').fillna(0)
+    df_restructured['Reste_A_Faire'] = pd.to_numeric(df_restructured['Reste_A_Faire'], errors='coerce').fillna(0)
+    
+    # Options de configuration
+    col_config1, col_config2 = st.columns(2)
+    
+    with col_config1:
+        regions_disponibles = sorted(df_restructured['Region'].unique().tolist())
+        regions_to_show = st.multiselect(
+            "🏷️ Régions à afficher:",
+            regions_disponibles,
+            default=regions_disponibles,  # Toutes les régions par défaut
+            key="financeurs_regions_dec"
+        )
+    
+    with col_config2:
+        sort_order = st.selectbox(
+            "📈 Ordre d'affichage:",
+            ["Total HTS décroissant", "Budget Décembre décroissant", "Reste à Faire décroissant", "Alphabétique"],
+            key="financeurs_sort_dec"
+        )
+    
+    # Filtrer selon les régions sélectionnées
+    df_viz = df_restructured[df_restructured['Region'].isin(regions_to_show)].copy()
+    
+    if df_viz.empty:
+        st.warning("⚠️ Aucune donnée à afficher avec les filtres sélectionnés")
+        return
+    
+    # Calculer le total par région pour le tri
+    region_totals = df_viz.groupby('Region').agg({
+        'Total_HTS_Suites': 'sum',
+        'Budget_Decembre': 'sum',
+        'Reste_A_Faire': 'sum'
+    }).reset_index()
+    
+    # Tri selon la sélection
+    if sort_order == "Total HTS décroissant":
+        region_order = region_totals.sort_values('Total_HTS_Suites', ascending=False)['Region'].tolist()
+    elif sort_order == "Budget Décembre décroissant":
+        region_order = region_totals.sort_values('Budget_Decembre', ascending=False)['Region'].tolist()
+    elif sort_order == "Reste à Faire décroissant":
+        region_order = region_totals.sort_values('Reste_A_Faire', ascending=False)['Region'].tolist()
+    else:  # Alphabétique
+        region_order = sorted(regions_to_show)
+    
+    # Créer le graphique
+    fig = go.Figure()
+    
+    # Couleurs pour les financeurs avec 3 nuances par financeur (pour les 3 métriques)
+    financeur_colors = {
+        'B2C - CPF': {
+            'Total_HTS': '#3498db',      # Bleu
+            'Budget': '#5dade2',          # Bleu clair
+            'Reste': '#85c1e9'            # Bleu très clair
+        },
+        'B2C - CPFT': {
+            'Total_HTS': '#2ecc71',      # Vert
+            'Budget': '#58d68d',          # Vert clair
+            'Reste': '#82e0aa'            # Vert très clair
+        },
+        "Marché de l'Alternance": {
+            'Total_HTS': '#9b59b6',      # Violet
+            'Budget': '#bb8fce',          # Violet clair
+            'Reste': '#d7bde2'            # Violet très clair
+        },
+        'Marché des Entreprises': {
+            'Total_HTS': '#e74c3c',      # Rouge
+            'Budget': '#ec7063',          # Rouge clair
+            'Reste': '#f1948a'            # Rouge très clair
+        },
+        'Marché Public': {
+            'Total_HTS': '#f39c12',      # Orange
+            'Budget': '#f8b739',          # Orange clair
+            'Reste': '#fad7a0'            # Orange très clair
+        }
+    }
+    
+    # Ajouter les 3 métriques pour chaque financeur
+    for financeur in financeurs_list:
+        df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
+        
+        # Métrique 1: Total HTS & Suites
+        y_values_hts = []
+        for region in region_order:
+            try:
+                if region in df_financeur.index.tolist():
+                    val = df_financeur.loc[region, 'Total_HTS_Suites']
+                    if pd.notna(val):
+                        y_values_hts.append(float(val))
+                    else:
+                        y_values_hts.append(0)
+                else:
+                    y_values_hts.append(0)
+            except:
+                y_values_hts.append(0)
+        
+        fig.add_trace(go.Bar(
+            name=f'{financeur} - Total HTS',
+            x=region_order,
+            y=y_values_hts,
+            marker_color=financeur_colors[financeur]['Total_HTS'],
+            text=[f"{v:,.0f}" if v > 0 else "" for v in y_values_hts],
+            textposition='inside',
+            legendgroup=financeur,
+            showlegend=True
+        ))
+        
+        # Métrique 2: Budget Décembre
+        y_values_budget = []
+        for region in region_order:
+            try:
+                if region in df_financeur.index.tolist():
+                    val = df_financeur.loc[region, 'Budget_Decembre']
+                    if pd.notna(val):
+                        y_values_budget.append(float(val))
+                    else:
+                        y_values_budget.append(0)
+                else:
+                    y_values_budget.append(0)
+            except:
+                y_values_budget.append(0)
+        
+        fig.add_trace(go.Bar(
+            name=f'{financeur} - Budget Déc',
+            x=region_order,
+            y=y_values_budget,
+            marker_color=financeur_colors[financeur]['Budget'],
+            text=[f"{v:,.0f}" if v > 0 else "" for v in y_values_budget],
+            textposition='inside',
+            legendgroup=financeur,
+            showlegend=True
+        ))
+        
+        # Métrique 3: Reste à Faire
+        y_values_reste = []
+        for region in region_order:
+            try:
+                if region in df_financeur.index.tolist():
+                    val = df_financeur.loc[region, 'Reste_A_Faire']
+                    if pd.notna(val):
+                        y_values_reste.append(float(val))
+                    else:
+                        y_values_reste.append(0)
+                else:
+                    y_values_reste.append(0)
+            except:
+                y_values_reste.append(0)
+        
+        fig.add_trace(go.Bar(
+            name=f'{financeur} - Reste à Faire',
+            x=region_order,
+            y=y_values_reste,
+            marker_color=financeur_colors[financeur]['Reste'],
+            text=[f"{v:,.0f}" if v > 0 else "" for v in y_values_reste],
+            textposition='inside',
+            legendgroup=financeur,
+            showlegend=True
+        ))
+    
+    # Configuration du graphique
+    fig.update_layout(
+        title="📅 Total HTS & Suites, Budget Décembre et Reste à Faire par Région et Financeur",
+        xaxis_title="Régions",
+        yaxis_title="Heures",
+        height=700,
+        barmode='group',
+        hovermode='x unified',
+        legend=dict(
+            orientation="v",
+            yanchor="top",
+            y=1,
+            xanchor="left",
+            x=1.02
+        ),
+        xaxis_tickangle=-45,
+        yaxis=dict(tickformat=',')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Statistiques récapitulatives
+    create_financeurs_statistics_decembre(df_restructured, regions_to_show)
+
+def create_financeurs_statistics_decembre(df, regions_filter=None):
+    """Crée les statistiques pour l'analyse financeurs décembre"""
+    
+    st.markdown("### 📊 Statistiques Décembre par Région et Financeur")
+    
+    # Filtrer par régions si spécifié
+    if regions_filter:
+        df = df[df['Region'].isin(regions_filter)]
+    
+    col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+    
+    total_hts = df['Total_HTS_Suites'].sum()
+    total_budget = df['Budget_Decembre'].sum()
+    total_reste = df['Reste_A_Faire'].sum()
+    tx_realisation = (total_hts / total_budget * 100) if total_budget > 0 else 0
+    
+    # Meilleur financeur pour Total HTS
+    financeur_totals = df.groupby('Financeur')['Total_HTS_Suites'].sum()
+    
+    if not financeur_totals.empty:
+        best_financeur = financeur_totals.idxmax()
+        best_financeur_val = financeur_totals.max()
+    else:
+        best_financeur = "N/A"
+        best_financeur_val = 0
+    
+    with col_stats1:
+        st.metric(
+            "📊 Total HTS & Suites",
+            f"{total_hts:,.0f}",
+            help="Total des HTS et suites de parcours"
+        )
+    
+    with col_stats2:
+        st.metric(
+            "📈 Budget Total Déc",
+            f"{total_budget:,.0f}",
+            help="Budget total à fin décembre"
+        )
+    
+    with col_stats3:
+        st.metric(
+            "📋 Reste à Faire Total",
+            f"{total_reste:,.0f}",
+            help="Total du reste à faire"
+        )
+    
+    with col_stats4:
+        st.metric(
+            "🏆 Meilleur Financeur",
+            best_financeur[:15] + "..." if len(best_financeur) > 15 else best_financeur,
+            f"{best_financeur_val:,.0f}h"
+        )
+    
+    # Tableau détaillé
+    with st.expander("📋 Données Détaillées par Région et Financeur"):
+        display_data = df.copy()
+        display_data['TX Réalisation (%)'] = (display_data['Total_HTS_Suites'] / 
+                                               display_data['Budget_Decembre'] * 100).fillna(0)
+        display_data['Écart Budget'] = display_data['Total_HTS_Suites'] - display_data['Budget_Decembre']
+        
+        columns_to_show = [
+            'Region', 'Financeur', 'Total_HTS_Suites', 'Budget_Decembre', 
+            'Reste_A_Faire', 'TX Réalisation (%)', 'Écart Budget'
+        ]
+        
+        display_data_filtered = display_data[columns_to_show].copy()
+        display_data_filtered = display_data_filtered.sort_values(['Region', 'Total_HTS_Suites'], ascending=[True, False])
+        
+        column_config = {
+            'Region': 'Région',
+            'Financeur': 'Financeur',
+            'Total_HTS_Suites': st.column_config.NumberColumn(
+                'Total HTS & Suites',
+                format="%.0f"
+            ),
+            'Budget_Decembre': st.column_config.NumberColumn(
+                'Budget Décembre',
+                format="%.0f"
+            ),
+            'Reste_A_Faire': st.column_config.NumberColumn(
+                'Reste à Faire',
+                format="%.0f"
+            ),
+            'TX Réalisation (%)': st.column_config.NumberColumn(
+                'TX Réalisation',
+                format="%.1f%%"
+            ),
+            'Écart Budget': st.column_config.NumberColumn(
+                'Écart Budget',
+                format="%.0f",
+                help="Total HTS - Budget Décembre"
+            )
+        }
+        
+        st.dataframe(
+            display_data_filtered,
+            use_container_width=True,
+            column_config=column_config,
+            hide_index=True
+        )
+
+def create_financeurs_statistics(df, regions_filter=None):
+    """Crée les statistiques pour l'analyse financeurs"""
+    
+    st.markdown("### 📊 Statistiques par Région et Financeur")
+    
+    # Filtrer par régions si spécifié
+    if regions_filter:
+        df = df[df['Region'].isin(regions_filter)]
+    
+    col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+    
+    total_hts = df['HTS_Realisees'].sum()
+    total_budget = df['Budget_Septembre'].sum()
+    tx_realisation = (total_hts / total_budget * 100) if total_budget > 0 else 0
+    
+    # Meilleur financeur
+    financeur_totals = df.groupby('Financeur')['HTS_Realisees'].sum()
+    if not financeur_totals.empty:
+        best_financeur = financeur_totals.idxmax()
+        best_financeur_val = financeur_totals.max()
+    else:
+        best_financeur = "N/A"
+        best_financeur_val = 0
+    
+    with col_stats1:
+        st.metric(
+            "📊 Total HTS Réalisées",
+            f"{total_hts:,.0f}",
+            help="Total des heures réalisées avec PAE"
+        )
+    
+    with col_stats2:
+        st.metric(
+            "📈 Budget Total Sept",
+            f"{total_budget:,.0f}",
+            help="Budget total à fin septembre"
+        )
+    
+    with col_stats3:
+        st.metric(
+            "🎯 TX Réalisation",
+            f"{tx_realisation:.1f}%",
+            help="Taux de réalisation global"
+        )
+    
+    with col_stats4:
+        st.metric(
+            "🏆 Meilleur Financeur",
+            best_financeur[:15] + "..." if len(best_financeur) > 15 else best_financeur,
+            f"{best_financeur_val:,.0f}h"
+        )
+    
+    # Tableau détaillé
+    with st.expander("📋 Données Détaillées par Région et Financeur"):
+        display_data = df.copy()
+        display_data['TX Réalisation (%)'] = (display_data['HTS_Realisees'] / 
+                                               display_data['Budget_Septembre'] * 100).fillna(0)
+        display_data['Écart'] = display_data['HTS_Realisees'] - display_data['Budget_Septembre']
+        
+        columns_to_show = [
+            'Region', 'Financeur', 'HTS_Realisees', 'Budget_Septembre', 
+            'TX Réalisation (%)', 'Écart'
+        ]
+        
+        display_data_filtered = display_data[columns_to_show].copy()
+        display_data_filtered = display_data_filtered.sort_values(['Region', 'HTS_Realisees'], ascending=[True, False])
+        
+        column_config = {
+            'Region': 'Région',
+            'Financeur': 'Financeur',
+            'HTS_Realisees': st.column_config.NumberColumn(
+                'HTS Réalisées',
+                format="%.0f"
+            ),
+            'Budget_Septembre': st.column_config.NumberColumn(
+                'Budget Septembre',
+                format="%.0f"
+            ),
+            'TX Réalisation (%)': st.column_config.NumberColumn(
+                'TX Réalisation',
+                format="%.1f%%"
+            ),
+            'Écart': st.column_config.NumberColumn(
+                'Écart',
+                format="%.0f",
+                help="HTS Réalisées - Budget"
+            )
+        }
+        
+        st.dataframe(
+            display_data_filtered,
+            use_container_width=True,
+            column_config=column_config,
+            hide_index=True
+        )
+
 def create_landing_visualization(df):
     """Crée la visualisation d'atterrissage avec barres multiples par période"""
     
@@ -383,14 +1003,44 @@ def show_landing_analysis():
     
     # Génération de l'analyse
     st.markdown("---")
-    try:
-        create_landing_visualization(df)
-    except Exception as e:
-        st.error(f"❌ Erreur lors de la génération des graphiques: {str(e)}")
-        
-        # Debug info
-        with st.expander("🔧 Informations de Debug"):
-            st.write("Colonnes disponibles:", df.columns.tolist())
-            st.write("Forme du DataFrame:", df.shape)
-            st.write("Types de données:", df.dtypes.to_dict())
-            st.write("Échantillon de données:", df.head())
+    
+    # Tabs pour différentes vues
+    tab1, tab2 = st.tabs(["📊 Analyse TX Réalisation", "💰 Analyse Financeurs"])
+    
+    with tab1:
+        try:
+            create_landing_visualization(df)
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la génération des graphiques: {str(e)}")
+            
+            # Debug info
+            with st.expander("🔧 Informations de Debug"):
+                st.write("Colonnes disponibles:", df.columns.tolist())
+                st.write("Forme du DataFrame:", df.shape)
+                st.write("Types de données:", df.dtypes.to_dict())
+                st.write("Échantillon de données:", df.head())
+    
+    with tab2:
+        # Charger la Feuil2 pour l'analyse financeurs
+        try:
+            if import_method == "Upload d'un nouveau fichier":
+                df_financeurs = pd.read_excel(uploaded_file, sheet_name='Feuil2')
+            else:
+                df_financeurs = pd.read_excel(custom_path, sheet_name='Feuil2')
+            
+            # Premier graphique : HTS Réalisées vs Budget Septembre
+            create_financeurs_visualization(df_financeurs)
+            
+            # Séparateur
+            st.markdown("---")
+            
+            # Deuxième graphique : Analyse Décembre
+            create_financeurs_visualization_decembre(df_financeurs)
+            
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la génération de l'analyse financeurs: {str(e)}")
+            st.info("💡 Assurez-vous que votre fichier contient une feuille 'Feuil2' avec les colonnes requises")
+            
+            # Debug info
+            with st.expander("🔧 Informations de Debug"):
+                st.write("Erreur:", str(e))

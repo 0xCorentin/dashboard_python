@@ -36,7 +36,7 @@ echo    - URL d'accès: http://localhost:8502
 echo.
 
 :: Lancement avec port dédié pour éviter les conflits
-python -m streamlit run analyseur_hebdomadaire.py --server.port 8502 --server.headless true
+python -m streamlit run main.py --server.port 8502 --server.headless true
 
 :: En cas d'erreur
 if errorlevel 1 (
