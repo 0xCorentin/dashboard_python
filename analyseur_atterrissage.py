@@ -802,12 +802,30 @@ def create_landing_visualization(df):
     # Reste à faire avec axe Y secondaire (valeurs brutes) si disponible
     if reste_a_faire_col:
         reste_a_faire = df_viz[reste_a_faire_col].tolist()
+        
+        # Créer deux listes : une pour les valeurs positives (reste à faire) et une pour les négatives (surplus)
+        reste_positif = [val if val > 0 else 0 for val in reste_a_faire]
+        surplus_absolu = [abs(val) if val < 0 else 0 for val in reste_a_faire]
+        
+        # Ajouter les barres pour le reste à faire (orange)
         fig.add_trace(go.Bar(
             x=regions,
-            y=reste_a_faire,
+            y=reste_positif,
             name='Reste à Faire (valeurs)',
             marker_color='#f39c12',  # Orange
-            text=[f"{val:,.0f}" for val in reste_a_faire],
+            text=[f"{val:,.0f}" if val > 0 else "" for val in reste_a_faire],
+            textposition='outside',
+            yaxis='y2',
+            offsetgroup=len(tx_columns)
+        ))
+        
+        # Ajouter les barres pour le surplus (vert)
+        fig.add_trace(go.Bar(
+            x=regions,
+            y=surplus_absolu,
+            name='Surplus (dépassement)',
+            marker_color='#27ae60',  # Vert
+            text=[f"+{abs(val):,.0f}" if val < 0 else "" for val in reste_a_faire],
             textposition='outside',
             yaxis='y2',
             offsetgroup=len(tx_columns)
