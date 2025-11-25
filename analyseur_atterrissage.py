@@ -806,7 +806,7 @@ def create_landing_visualization(df):
             x=regions,
             y=reste_a_faire,
             name='Reste à Faire (valeurs)',
-            marker_color='#95a5a6',
+            marker_color='#f39c12',  # Orange
             text=[f"{val:,.0f}" for val in reste_a_faire],
             textposition='outside',
             yaxis='y2',
