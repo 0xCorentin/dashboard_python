@@ -639,9 +639,28 @@ def create_landing_visualization(df):
     
     st.markdown("### 🎯 Analyse d'Atterrissage par Région")
     
+    # Détecter les colonnes TX de réalisation disponibles
+    tx_columns = [col for col in df.columns if 'TX DE REALISATION' in col.upper()]
+    reste_a_faire_col = next((col for col in df.columns if 'RESTE A FAIRE' in col.upper()), None)
+    
+    if len(tx_columns) == 0:
+        st.error("❌ Aucune colonne TX DE REALISATION trouvée dans les données")
+        return
+    
     # Filtrer les données pour enlever les totaux
     df_filtered = df[~df['REGION'].str.contains('total|Total|TOTAL|ENSEMBLE', case=False, na=False)].copy()
     df_filtered = df_filtered.dropna(subset=['REGION'])
+    
+    # Créer les options de tri dynamiquement
+    sort_options = []
+    for tx_col in tx_columns:
+        mois = tx_col.replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+        if not mois:
+            mois = "Global"
+        sort_options.append(f"TX {mois.title()} décroissant")
+    sort_options.extend(["Alphabétique"])
+    if reste_a_faire_col:
+        sort_options.append("Reste à faire décroissant")
     
     # Options de configuration
     col_config1, col_config2 = st.columns(2)
@@ -657,7 +676,7 @@ def create_landing_visualization(df):
     with col_config2:
         sort_order = st.selectbox(
             "📊 Ordre d'affichage:",
-            ["TX Septembre décroissant", "TX Décembre décroissant", "Alphabétique", "Reste à faire décroissant"],
+            sort_options,
             key="landing_sort"
         )
     
@@ -669,63 +688,60 @@ def create_landing_visualization(df):
         return
     
     # Tri selon la sélection
-    if sort_order == "TX Septembre décroissant":
-        df_viz = df_viz.sort_values('TX DE REALISATION A FIN SEPTEMBRE', ascending=False)
-    elif sort_order == "TX Décembre décroissant":
-        df_viz = df_viz.sort_values('TX DE REALISATION /AU BUDGET A FIN DECEMBRE', ascending=False)
-    elif sort_order == "Alphabétique":
+    if sort_order == "Alphabétique":
         df_viz = df_viz.sort_values('REGION', ascending=True)
-    elif sort_order == "Reste à faire décroissant":
-        df_viz = df_viz.sort_values('RESTE A FAIRE / NOUVELLES ENTREES', ascending=False)
+    elif sort_order == "Reste à faire décroissant" and reste_a_faire_col:
+        df_viz = df_viz.sort_values(reste_a_faire_col, ascending=False)
+    else:
+        # Tri par TX - trouver la colonne correspondante
+        for tx_col in tx_columns:
+            mois = tx_col.replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+            if not mois:
+                mois = "Global"
+            if f"TX {mois.title()} décroissant" == sort_order:
+                df_viz = df_viz.sort_values(tx_col, ascending=False)
+                break
     
     # Créer le graphique avec barres multiples
     fig = go.Figure()
     
     regions = df_viz['REGION'].tolist()
     
-    # Barre 1: TX de réalisation à fin septembre (en %)
-    tx_septembre = (df_viz['TX DE REALISATION A FIN SEPTEMBRE'] * 100).tolist()
+    # Couleurs pour les différentes périodes
+    colors = ['#3498db', '#e74c3c', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b', '#27ae60', '#8e44ad']
     
-    # Barre 2: TX de réalisation à fin décembre (en %)
-    tx_decembre = (df_viz['TX DE REALISATION /AU BUDGET A FIN DECEMBRE'] * 100).tolist()
+    # Ajouter les barres TX avec axe Y principal (pourcentages) pour chaque colonne détectée
+    for idx, tx_col in enumerate(tx_columns):
+        mois = tx_col.replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+        if not mois:
+            mois = "Global"
+        
+        tx_values = (df_viz[tx_col] * 100).tolist()
+        
+        fig.add_trace(go.Bar(
+            x=regions,
+            y=tx_values,
+            name=f'TX Réalisation {mois.title()} (%)',
+            marker_color=colors[idx % len(colors)],
+            text=[f"{val:.1f}%" for val in tx_values],
+            textposition='outside',
+            yaxis='y',
+            offsetgroup=idx
+        ))
     
-    # Barre 3: Reste à faire - garder les valeurs brutes
-    reste_a_faire = df_viz['RESTE A FAIRE / NOUVELLES ENTREES'].tolist()
-    
-    # Ajouter les barres TX avec axe Y principal (pourcentages)
-    fig.add_trace(go.Bar(
-        x=regions,
-        y=tx_septembre,
-        name='TX Réalisation Septembre (%)',
-        marker_color='#3498db',  # Bleu
-        text=[f"{val:.1f}%" for val in tx_septembre],
-        textposition='outside',
-        yaxis='y',
-        offsetgroup=0  # Premier groupe
-    ))
-    
-    fig.add_trace(go.Bar(
-        x=regions,
-        y=tx_decembre,
-        name='TX Réalisation Décembre (%)',
-        marker_color='#e74c3c',  # Rouge
-        text=[f"{val:.1f}%" for val in tx_decembre],
-        textposition='outside',
-        yaxis='y',
-        offsetgroup=1  # Deuxième groupe
-    ))
-    
-    # Reste à faire avec axe Y secondaire (valeurs brutes)
-    fig.add_trace(go.Bar(
-        x=regions,
-        y=reste_a_faire,
-        name='Reste à Faire (valeurs)',
-        marker_color='#f39c12',  # Orange
-        text=[f"{val:,.0f}" for val in reste_a_faire],
-        textposition='outside',
-        yaxis='y2',  # Axe secondaire pour les valeurs brutes
-        offsetgroup=2  # Groupe séparé pour le positionnement
-    ))
+    # Reste à faire avec axe Y secondaire (valeurs brutes) si disponible
+    if reste_a_faire_col:
+        reste_a_faire = df_viz[reste_a_faire_col].tolist()
+        fig.add_trace(go.Bar(
+            x=regions,
+            y=reste_a_faire,
+            name='Reste à Faire (valeurs)',
+            marker_color='#95a5a6',
+            text=[f"{val:,.0f}" for val in reste_a_faire],
+            textposition='outside',
+            yaxis='y2',
+            offsetgroup=len(tx_columns)
+        ))
     
     # Configuration du graphique avec double axe Y
     fig.update_layout(
@@ -766,90 +782,113 @@ def create_landing_statistics(df):
     
     st.markdown("### 📊 Statistiques d'Atterrissage")
     
-    col_stats1, col_stats2, col_stats3, col_stats4 = st.columns(4)
+    # Détecter les colonnes TX de réalisation disponibles
+    tx_columns = [col for col in df.columns if 'TX DE REALISATION' in col.upper()]
+    reste_a_faire_col = next((col for col in df.columns if 'RESTE A FAIRE' in col.upper()), None)
     
-    # Moyennes
-    avg_tx_sept = df['TX DE REALISATION A FIN SEPTEMBRE'].mean() * 100
-    avg_tx_dec = df['TX DE REALISATION /AU BUDGET A FIN DECEMBRE'].mean() * 100
+    if len(tx_columns) == 0:
+        st.warning("⚠️ Aucune colonne TX DE REALISATION disponible pour les statistiques")
+        return
     
-    # Calculer le reste à faire moyen en valeurs brutes
-    avg_reste_brut = df['RESTE A FAIRE / NOUVELLES ENTREES'].mean()
-    total_reste_brut = df['RESTE A FAIRE / NOUVELLES ENTREES'].sum()
+    # Créer les colonnes pour les métriques (maximum 4)
+    num_metrics = min(len(tx_columns) + (1 if reste_a_faire_col else 0) + 1, 4)
+    cols = st.columns(num_metrics)
     
-    # Meilleure région septembre
-    best_sept_idx = df['TX DE REALISATION A FIN SEPTEMBRE'].idxmax()
-    best_sept_region = df.loc[best_sept_idx, 'REGION']
-    best_sept_val = df.loc[best_sept_idx, 'TX DE REALISATION A FIN SEPTEMBRE'] * 100
+    col_idx = 0
     
-    with col_stats1:
-        st.metric(
-            "📊 TX Moyen Septembre",
-            f"{avg_tx_sept:.1f}%",
-            help="Taux de réalisation moyen à fin septembre"
-        )
+    # Afficher les statistiques pour chaque colonne TX
+    for idx, tx_col in enumerate(tx_columns[:2]):  # Limiter à 2 premières colonnes TX
+        mois = tx_col.replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+        if not mois:
+            mois = "Global"
+        
+        avg_tx = df[tx_col].mean() * 100
+        
+        with cols[col_idx]:
+            st.metric(
+                f"📊 TX Moyen {mois.title()}",
+                f"{avg_tx:.1f}%",
+                help=f"Taux de réalisation moyen à fin {mois.lower()}"
+            )
+        col_idx += 1
     
-    with col_stats2:
-        st.metric(
-            "📈 TX Moyen Décembre",
-            f"{avg_tx_dec:.1f}%",
-            f"+{avg_tx_dec - avg_tx_sept:.1f}% vs Sept"
-        )
+    # Meilleure région (basée sur la première colonne TX)
+    if col_idx < num_metrics:
+        best_idx = df[tx_columns[0]].idxmax()
+        best_region = df.loc[best_idx, 'REGION']
+        best_val = df.loc[best_idx, tx_columns[0]] * 100
+        
+        mois_ref = tx_columns[0].replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+        if not mois_ref:
+            mois_ref = "Global"
+        
+        with cols[col_idx]:
+            st.metric(
+                f"🏆 Meilleure Région",
+                best_region[:15] + "..." if len(best_region) > 15 else best_region,
+                f"{best_val:.1f}%"
+            )
+        col_idx += 1
     
-    with col_stats3:
-        st.metric(
-            "🏆 Meilleure Région Sept",
-            best_sept_region[:15] + "..." if len(best_sept_region) > 15 else best_sept_region,
-            f"{best_sept_val:.1f}%"
-        )
-    
-    with col_stats4:
-        st.metric(
-            "📋 Reste à Faire Moyen",
-            f"{avg_reste_brut:,.0f}",
-            help="Valeur moyenne du reste à faire (valeurs brutes)"
-        )
+    # Reste à faire moyen
+    if reste_a_faire_col and col_idx < num_metrics:
+        avg_reste_brut = df[reste_a_faire_col].mean()
+        
+        with cols[col_idx]:
+            st.metric(
+                "📋 Reste à Faire Moyen",
+                f"{avg_reste_brut:,.0f}",
+                help="Valeur moyenne du reste à faire (valeurs brutes)"
+            )
     
     # Tableau détaillé
     with st.expander("📋 Données Détaillées par Région"):
         # Préparer les données pour l'affichage
         display_data = df.copy()
-        display_data['TX Sept (%)'] = display_data['TX DE REALISATION A FIN SEPTEMBRE'] * 100
-        display_data['TX Déc (%)'] = display_data['TX DE REALISATION /AU BUDGET A FIN DECEMBRE'] * 100
-        display_data['Écart Sep-Déc'] = display_data['TX Déc (%)'] - display_data['TX Sept (%)']
         
-        # Ajouter le reste à faire en valeurs brutes
-        display_data['Reste à Faire (valeurs)'] = display_data['RESTE A FAIRE / NOUVELLES ENTREES']
+        columns_to_show = ['REGION']
+        column_config = {'REGION': 'Région'}
         
-        # Sélectionner les colonnes à afficher
-        columns_to_show = [
-            'REGION', 'TX Sept (%)', 'TX Déc (%)', 'Écart Sep-Déc', 'Reste à Faire (valeurs)'
-        ]
-        
-        display_data_filtered = display_data[columns_to_show].copy()
-        display_data_filtered = display_data_filtered.sort_values('TX Sept (%)', ascending=False)
-        
-        # Configuration des colonnes
-        column_config = {
-            'REGION': 'Région',
-            'TX Sept (%)': st.column_config.NumberColumn(
-                'TX Sept (%)',
+        # Ajouter dynamiquement les colonnes TX
+        for tx_col in tx_columns:
+            mois = tx_col.replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+            if not mois:
+                mois = "Global"
+            
+            col_name = f'TX {mois.title()} (%)'
+            display_data[col_name] = display_data[tx_col] * 100
+            columns_to_show.append(col_name)
+            column_config[col_name] = st.column_config.NumberColumn(
+                col_name,
                 format="%.1f%%"
-            ),
-            'TX Déc (%)': st.column_config.NumberColumn(
-                'TX Déc (%)',
-                format="%.1f%%"
-            ),
-            'Écart Sep-Déc': st.column_config.NumberColumn(
-                'Écart Sep-Déc',
+            )
+        
+        # Ajouter l'écart si au moins 2 colonnes TX
+        if len(tx_columns) >= 2:
+            mois1 = tx_columns[0].replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip() or "Premier"
+            mois2 = tx_columns[-1].replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip() or "Dernier"
+            
+            ecart_col = f'Écart {mois1[:3]}-{mois2[:3]}'
+            display_data[ecart_col] = (display_data[tx_columns[-1]] - display_data[tx_columns[0]]) * 100
+            columns_to_show.append(ecart_col)
+            column_config[ecart_col] = st.column_config.NumberColumn(
+                ecart_col,
                 format="%.1f%%",
-                help="Différence entre TX Décembre et TX Septembre"
-            ),
-            'Reste à Faire (valeurs)': st.column_config.NumberColumn(
+                help=f"Différence entre {mois2.title()} et {mois1.title()}"
+            )
+        
+        # Ajouter le reste à faire si disponible
+        if reste_a_faire_col:
+            display_data['Reste à Faire (valeurs)'] = display_data[reste_a_faire_col]
+            columns_to_show.append('Reste à Faire (valeurs)')
+            column_config['Reste à Faire (valeurs)'] = st.column_config.NumberColumn(
                 'Reste à Faire (valeurs)',
                 format="%.0f",
                 help="Valeurs brutes du reste à faire"
             )
-        }
+        
+        display_data_filtered = display_data[columns_to_show].copy()
+        display_data_filtered = display_data_filtered.sort_values(columns_to_show[1], ascending=False)
         
         st.dataframe(
             display_data_filtered,
