@@ -942,10 +942,11 @@ def show_landing_analysis():
         st.markdown("""
         **Le fichier Excel doit contenir :**
         - Une colonne 'Régions' ou 'REGION' avec les noms des régions
-        - Une colonne 'TX DE REALISATION A FIN SEPTEMBRE' avec les taux (0-1)
-        - Une colonne 'TX DE REALISATION /AU BUDGET A FIN DECEMBRE' avec les taux (0-1)
-        - Une colonne 'RESTE A FAIRE / NOUVELLES ENTREES' avec les valeurs numériques
+        - Au moins une colonne 'TX DE REALISATION A FIN [MOIS]' avec les taux (0-1)
+          - Exemples: 'TX DE REALISATION A FIN SEPTEMBRE', 'TX DE REALISATION A FIN DECEMBRE', etc.
+        - Une colonne 'RESTE A FAIRE / NOUVELLES ENTREES' avec les valeurs numériques (optionnelle)
         - **Format des taux** : Décimaux entre 0 et 1 (ex: 0.85 pour 85%)
+        - **Tous les mois sont acceptés** : janvier, février, mars, avril, mai, juin, juillet, août, septembre, octobre, novembre, décembre
         """)
         return
     
@@ -956,23 +957,37 @@ def show_landing_analysis():
     # Validation du format des données
     st.success(f"✅ Fichier chargé avec succès : {len(df)} lignes, {len(df.columns)} colonnes")
     
+    # Détection dynamique des colonnes de TX de réalisation (tous les mois)
+    tx_columns = [col for col in df.columns if 'TX DE REALISATION' in col.upper()]
+    reste_a_faire_col = next((col for col in df.columns if 'RESTE A FAIRE' in col.upper()), None)
+    
     # Vérifications de compatibilité
     warnings = []
     if 'REGION' not in df.columns:
         warnings.append("❌ Colonne 'REGION' ou 'Régions' non trouvée - impossible de créer les analyses")
+    
+    if len(tx_columns) == 0:
+        warnings.append("❌ Aucune colonne 'TX DE REALISATION' trouvée - impossible de créer les analyses")
+    
+    if not reste_a_faire_col:
+        warnings.append("⚠️ Colonne 'RESTE A FAIRE' non trouvée - certaines statistiques seront limitées")
         
     if warnings:
         for warning in warnings:
-            st.error(warning)
+            if "❌" in warning:
+                st.error(warning)
+            else:
+                st.warning(warning)
         
-        st.info("💡 Votre fichier doit contenir toutes les colonnes requises pour l'analyse d'atterrissage")
-        
-        # Afficher les colonnes disponibles pour aider l'utilisateur
-        with st.expander("📋 Colonnes Disponibles dans votre Fichier"):
-            st.write("Colonnes trouvées:")
-            for col in df.columns:
-                st.write(f"• {col}")
-        return
+        if any("❌" in w for w in warnings):
+            st.info("💡 Votre fichier doit contenir au minimum une colonne REGION et une colonne TX DE REALISATION")
+            
+            # Afficher les colonnes disponibles pour aider l'utilisateur
+            with st.expander("📋 Colonnes Disponibles dans votre Fichier"):
+                st.write("Colonnes trouvées:")
+                for col in df.columns:
+                    st.write(f"• {col}")
+            return
     
     # Sidebar avec informations sur les données
     with st.sidebar:
@@ -983,14 +998,25 @@ def show_landing_analysis():
         st.metric("🏢 Nombre de Régions", regions_count)
         st.metric("📊 Lignes de Données", len(df))
         
-        # Statistiques rapides
-        avg_tx_sept = df['TX DE REALISATION A FIN SEPTEMBRE'].mean() * 100
-        avg_tx_dec = df['TX DE REALISATION /AU BUDGET A FIN DECEMBRE'].mean() * 100
-        
-        st.subheader("📊 Aperçu Rapide")
-        st.metric("TX Moyen Sept", f"{avg_tx_sept:.1f}%")
-        st.metric("TX Moyen Déc", f"{avg_tx_dec:.1f}%")
-        st.metric("Évolution", f"+{avg_tx_dec - avg_tx_sept:.1f}%")
+        # Statistiques rapides - sécurisé avec vérification dynamique
+        if len(tx_columns) > 0:
+            st.subheader("📊 Aperçu Rapide")
+            
+            # Afficher les statistiques pour chaque colonne TX trouvée
+            for tx_col in tx_columns:
+                # Extraire le nom du mois de la colonne
+                mois = tx_col.replace('TX DE REALISATION', '').replace('A FIN', '').replace('/AU BUDGET A FIN', '').strip()
+                if not mois:
+                    mois = "Global"
+                    
+                avg_tx = df[tx_col].mean() * 100
+                st.metric(f"TX Moyen {mois.title()}", f"{avg_tx:.1f}%")
+            
+            # Si au moins 2 colonnes, afficher l'évolution
+            if len(tx_columns) >= 2:
+                first_tx = df[tx_columns[0]].mean() * 100
+                last_tx = df[tx_columns[-1]].mean() * 100
+                st.metric("📈 Évolution", f"+{last_tx - first_tx:.1f}%")
     
     # Génération de l'analyse
     st.markdown("---")
