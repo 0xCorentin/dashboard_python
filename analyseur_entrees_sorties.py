@@ -1808,11 +1808,6 @@ def show_entrees_sorties_analysis():
     if 'FINANCEURS' not in df.columns:
         warnings.append("❌ Colonne 'FINANCEURS' (ou 'Financeurs') non trouvée - impossible de créer les analyses")
     
-    required_metrics = ['Entrées', 'Sorties', 'Abandons']
-    for metric in required_metrics:
-        if metric not in df.columns:
-            warnings.append(f"❌ Colonne '{metric}' non trouvée - impossible de créer les analyses")
-    
     if warnings:
         for warning in warnings:
             st.error(warning)
