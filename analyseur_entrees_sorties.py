@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """
 Analyseur Entrées-Sorties-Abandons
 Module dédié à l'analyse des flux de stagiaires par région et financeur
