@@ -267,7 +267,7 @@ def create_monthly_evolution_chart(df):
     
     # Identifier les colonnes de pourcentage mensuelles (TX DE CAPACITE)
     tx_cols = [col for col in df.columns if 'TX DE CAPACITE' in col and any(mois in col for mois in 
-               ['JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE'])]
+               ['JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE'])]
     
     if len(tx_cols) == 0:
         st.warning("⚠️ Aucune colonne de taux de capacité mensuelle trouvée")
@@ -276,7 +276,8 @@ def create_monthly_evolution_chart(df):
     # Nettoyer les noms des mois pour l'affichage
     month_mapping = {
         'JANVIER': 'Janvier', 'FEVRIER': 'Février', 'MARS': 'Mars', 'AVRIL': 'Avril',
-        'MAI': 'Mai', 'JUIN': 'Juin', 'JUILLET': 'Juillet', 'AOÛT': 'Août', 'SEPTEMBRE': 'Septembre'
+        'MAI': 'Mai', 'JUIN': 'Juin', 'JUILLET': 'Juillet', 'AOÛT': 'Août', 'SEPTEMBRE': 'Septembre',
+        'OCTOBRE': 'Octobre', 'NOVEMBRE': 'Novembre', 'DECEMBRE': 'Décembre'
     }
     
     # Options de configuration
