@@ -960,16 +960,6 @@ def show_landing_analysis():
     warnings = []
     if 'REGION' not in df.columns:
         warnings.append("❌ Colonne 'REGION' ou 'Régions' non trouvée - impossible de créer les analyses")
-    
-    required_cols = [
-        'TX DE REALISATION A FIN SEPTEMBRE',
-        'TX DE REALISATION /AU BUDGET A FIN DECEMBRE',
-        'RESTE A FAIRE / NOUVELLES ENTREES'
-    ]
-    
-    for col in required_cols:
-        if col not in df.columns:
-            warnings.append(f"❌ Colonne '{col}' non trouvée - impossible de créer les analyses")
         
     if warnings:
         for warning in warnings:
