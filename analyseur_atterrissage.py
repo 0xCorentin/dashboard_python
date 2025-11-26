@@ -886,47 +886,100 @@ def create_landing_visualization_with_financeurs(df):
                 yaxis='y',
                 legendgroup=f'{financeur}_{period_name}',
                 showlegend=True,
-                opacity=0.9 - (idx * 0.1)
+                opacity=0.9 - (idx * 0.1),
+                offsetgroup=idx
             ))
     
-    # Reste à faire avec axe Y secondaire si disponible
+    # Reste à faire avec axe Y secondaire (valeurs absolues)
+    # Surplus sur axe Y principal pour dépasser les 100%
     if reste_a_faire_col:
         for financeur in financeurs_to_show:
             df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
-            y_values = []
+            y_values_reste = []
+            y_values_surplus = []
             
             for region in region_order:
                 try:
                     if region in df_financeur.index.tolist():
                         val = df_financeur.loc[region, reste_a_faire_col]
+                        tx_val = 0
+                        # Récupérer le TX correspondant
+                        if len(tx_columns) > 0:
+                            tx_val = df_financeur.loc[region, tx_columns[-1]]  # Dernier TX
+                            if pd.notna(tx_val):
+                                tx_val = float(tx_val) * 100
+                            else:
+                                tx_val = 0
+                        
                         if pd.notna(val):
-                            y_values.append(float(val))
+                            val_float = float(val)
+                            # Si positif = reste à faire, si négatif = surplus
+                            if val_float > 0:
+                                y_values_reste.append(val_float)
+                                y_values_surplus.append(0)
+                            else:
+                                y_values_reste.append(0)
+                                # Pour le surplus qui dépasse 100%, on affiche TX + extension
+                                surplus_percent = min(abs(val_float) / 10000 * 10, 20)  # Jusqu'à 20% au-dessus
+                                y_values_surplus.append(tx_val + surplus_percent)
                         else:
-                            y_values.append(0)
+                            y_values_reste.append(0)
+                            y_values_surplus.append(0)
                     else:
-                        y_values.append(0)
+                        y_values_reste.append(0)
+                        y_values_surplus.append(0)
                 except:
-                    y_values.append(0)
+                    y_values_reste.append(0)
+                    y_values_surplus.append(0)
             
+            # Couleur différente pour Reste à Faire
+            base_color = financeur_colors.get(financeur, '#34495e')
+            reste_color = base_color.replace('#3498db', '#1f5f8b').replace('#2ecc71', '#1e8449') \
+                                     .replace('#9b59b6', '#6c3483').replace('#e74c3c', '#a93226') \
+                                     .replace('#f39c12', '#b9770e').replace('#95a5a6', '#626567')
+            
+            # Ajouter la barre Reste à Faire (sur axe Y2)
             fig.add_trace(go.Bar(
                 name=f'{financeur} - Reste à Faire',
                 x=region_order,
-                y=y_values,
-                marker=dict(
-                    color=financeur_colors.get(financeur, '#34495e'),
-                    pattern_shape="/"
-                ),
-                text=[f"{v:,.0f}" if v != 0 else "" for v in y_values],
+                y=y_values_reste,
+                marker_color=reste_color,
+                text=[f"{v:,.0f}" if v > 0 else "" for v in y_values_reste],
                 textposition='outside',
                 yaxis='y2',
                 legendgroup=f'{financeur}_reste',
                 showlegend=True,
-                opacity=0.6
+                opacity=1.0,
+                offsetgroup=len(tx_columns)
             ))
+            
+            # Ajouter la barre Surplus qui dépasse les 100%
+            if any(v > 0 for v in y_values_surplus):
+                surplus_color = '#1abc9c'  # Turquoise/cyan
+                
+                fig.add_trace(go.Bar(
+                    name=f'{financeur} - Surplus (dépassement)',
+                    x=region_order,
+                    y=y_values_surplus,
+                    marker_color=surplus_color,
+                    text=[f"+{abs(df_financeur.loc[region_order[i], reste_a_faire_col]):,.0f}" if y_values_surplus[i] > 0 and region_order[i] in df_financeur.index else "" for i in range(len(region_order))],
+                    textposition='outside',
+                    yaxis='y',
+                    legendgroup=f'{financeur}_surplus',
+                    showlegend=True,
+                    opacity=0.8,
+                    offsetgroup=len(tx_columns) + 1
+                ))
     
     # Configuration du graphique avec double axe Y
     fig.update_layout(
-        title="🎯 Analyse d'Atterrissage : TX Réalisation et Reste à Faire par Région et Financeur",
+        title={
+            'text': "🎯 Analyse d'Atterrissage : TX Réalisation et Reste à Faire par Région et Financeur",
+            'y': 0.98,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'
+        },
         xaxis_title="Régions",
         yaxis=dict(
             title="Taux de Réalisation (%)",
@@ -946,11 +999,12 @@ def create_landing_visualization_with_financeurs(df):
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=1.02,
+            y=1.10,
             xanchor="right",
             x=1
         ),
-        xaxis_tickangle=-45
+        xaxis_tickangle=-45,
+        margin=dict(t=150)
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -1475,7 +1529,7 @@ def show_landing_analysis():
     st.markdown("---")
     
     # Tabs pour différentes vues
-    tab1, tab2, tab3 = st.tabs(["📊 Analyse TX Réalisation", "💰 Analyse Financeurs (Feuil1)", "🎯 Analyse par Financeurs (Feuil2)"])
+    tab1, tab2 = st.tabs(["📊 Analyse TX Réalisation", "🎯 Analyse par Financeurs (Feuil2)"])
     
     with tab1:
         try:
@@ -1491,40 +1545,15 @@ def show_landing_analysis():
                 st.write("Échantillon de données:", df.head())
     
     with tab2:
-        # Charger la Feuil2 pour l'analyse financeurs
+        # Charger la Feuil2 pour l'analyse d'atterrissage par financeurs
         try:
             if import_method == "Upload d'un nouveau fichier":
                 df_financeurs = pd.read_excel(uploaded_file, sheet_name='Feuil2')
             else:
                 df_financeurs = pd.read_excel(custom_path, sheet_name='Feuil2')
             
-            # Premier graphique : HTS Réalisées vs Budget Septembre
-            create_financeurs_visualization(df_financeurs)
-            
-            # Séparateur
-            st.markdown("---")
-            
-            # Deuxième graphique : Analyse Décembre
-            create_financeurs_visualization_decembre(df_financeurs)
-            
-        except Exception as e:
-            st.error(f"❌ Erreur lors de la génération de l'analyse financeurs: {str(e)}")
-            st.info("💡 Assurez-vous que votre fichier contient une feuille 'Feuil2' avec les colonnes requises")
-            
-            # Debug info
-            with st.expander("🔧 Informations de Debug"):
-                st.write(str(e))
-    
-    with tab3:
-        # Charger la Feuil2 pour l'analyse d'atterrissage par financeurs
-        try:
-            if import_method == "Upload d'un nouveau fichier":
-                df_financeurs2 = pd.read_excel(uploaded_file, sheet_name='Feuil2')
-            else:
-                df_financeurs2 = pd.read_excel(custom_path, sheet_name='Feuil2')
-            
             # Graphique d'atterrissage avec filtres par financeurs
-            create_landing_visualization_with_financeurs(df_financeurs2)
+            create_landing_visualization_with_financeurs(df_financeurs)
             
         except Exception as e:
             st.error(f"❌ Erreur lors de la génération de l'analyse par financeurs: {str(e)}")
