@@ -704,6 +704,332 @@ def create_financeurs_statistics(df, regions_filter=None):
             hide_index=True
         )
 
+def create_landing_visualization_with_financeurs(df):
+    """Crée la visualisation d'atterrissage par financeurs avec barres multiples par période"""
+    
+    st.markdown("### 🎯 Analyse d'Atterrissage par Région et Financeurs")
+    
+    # Détecter les colonnes TX de réalisation disponibles
+    tx_columns = [col for col in df.columns if 'TX DE REALISATION' in col.upper()]
+    reste_a_faire_col = next((col for col in df.columns if 'RESTE A FAIRE' in col.upper()), None)
+    
+    if len(tx_columns) == 0:
+        st.error("❌ Aucune colonne TX DE REALISATION trouvée")
+        return
+    
+    # Identifier les financeurs
+    financeurs_list = ['B2C - CPF', 'B2C - CPFT', "Marché de l'Alternance", 
+                       'Marché des Entreprises', 'Marché Public', 'Pas de financeur']
+    
+    # Restructurer les données : associer chaque financeur à sa région
+    data_restructured = []
+    current_region = None
+    
+    for idx, row in df.iterrows():
+        region_name = row['Régions']
+        
+        # Si c'est une région (pas un financeur)
+        if region_name not in financeurs_list:
+            if not pd.isna(region_name) and not any(x in str(region_name).lower() for x in ['total', 'ensemble', 'dispositif national']):
+                current_region = region_name
+        # Si c'est un financeur et qu'on a une région courante
+        elif current_region is not None and region_name in financeurs_list:
+            data_entry = {
+                'Region': current_region,
+                'Financeur': region_name
+            }
+            
+            # Ajouter toutes les colonnes TX
+            for tx_col in tx_columns:
+                data_entry[tx_col] = row[tx_col]
+            
+            # Ajouter Reste à faire si disponible
+            if reste_a_faire_col:
+                data_entry[reste_a_faire_col] = row[reste_a_faire_col]
+            
+            data_restructured.append(data_entry)
+    
+    # Créer un DataFrame restructuré
+    df_restructured = pd.DataFrame(data_restructured)
+    
+    if df_restructured.empty:
+        st.warning("⚠️ Aucune donnée à afficher")
+        return
+    
+    # Remplacer les valeurs '-' par 0 pour toutes les colonnes numériques
+    for col in df_restructured.columns:
+        if col not in ['Region', 'Financeur']:
+            df_restructured[col] = pd.to_numeric(df_restructured[col], errors='coerce').fillna(0)
+    
+    # Créer les options de tri dynamiquement
+    sort_options = []
+    for tx_col in tx_columns:
+        period = tx_col.replace('TX DE REALISATION', '').strip().replace('/', '').strip()
+        if period:
+            sort_options.append(f"TX {period} décroissant")
+        else:
+            sort_options.append("TX décroissant")
+    sort_options.append("Alphabétique")
+    if reste_a_faire_col:
+        sort_options.append("Reste à faire décroissant")
+    
+    # Options de configuration
+    col_config1, col_config2, col_config3 = st.columns(3)
+    
+    with col_config1:
+        regions_disponibles = sorted(df_restructured['Region'].unique().tolist())
+        regions_to_show = st.multiselect(
+            "🏷️ Régions à afficher:",
+            regions_disponibles,
+            default=regions_disponibles,
+            key="landing_financeurs_regions"
+        )
+    
+    with col_config2:
+        financeurs_disponibles = sorted(df_restructured['Financeur'].unique().tolist())
+        financeurs_to_show = st.multiselect(
+            "💰 Financeurs à afficher:",
+            financeurs_disponibles,
+            default=financeurs_disponibles,
+            key="landing_financeurs_filter"
+        )
+    
+    with col_config3:
+        sort_order = st.selectbox(
+            "📈 Ordre d'affichage:",
+            sort_options,
+            key="landing_financeurs_sort"
+        )
+    
+    # Filtrer selon les sélections
+    df_viz = df_restructured[
+        (df_restructured['Region'].isin(regions_to_show)) & 
+        (df_restructured['Financeur'].isin(financeurs_to_show))
+    ].copy()
+    
+    if df_viz.empty:
+        st.warning("⚠️ Aucune donnée à afficher avec les filtres sélectionnés")
+        return
+    
+    # Calculer les totaux par région pour le tri
+    agg_dict = {}
+    for tx_col in tx_columns:
+        agg_dict[tx_col] = 'mean'
+    if reste_a_faire_col:
+        agg_dict[reste_a_faire_col] = 'sum'
+    
+    region_totals = df_viz.groupby('Region').agg(agg_dict).reset_index()
+    
+    # Tri selon la sélection
+    if sort_order == "Alphabétique":
+        region_order = sorted(regions_to_show)
+    elif sort_order == "Reste à faire décroissant" and reste_a_faire_col:
+        region_order = region_totals.sort_values(reste_a_faire_col, ascending=False)['Region'].tolist()
+    else:
+        # Trouver la colonne TX correspondante
+        for tx_col in tx_columns:
+            period = tx_col.replace('TX DE REALISATION', '').strip().replace('/', '').strip()
+            if (period and f"TX {period} décroissant" == sort_order) or (not period and "TX décroissant" == sort_order):
+                region_order = region_totals.sort_values(tx_col, ascending=False)['Region'].tolist()
+                break
+        else:
+            region_order = sorted(regions_to_show)
+    
+    # Créer le graphique avec barres multiples
+    fig = go.Figure()
+    
+    # Couleurs pour les financeurs
+    financeur_colors = {
+        'B2C - CPF': '#3498db',
+        'B2C - CPFT': '#2ecc71',
+        "Marché de l'Alternance": '#9b59b6',
+        'Marché des Entreprises': '#e74c3c',
+        'Marché Public': '#f39c12',
+        'Pas de financeur': '#95a5a6'
+    }
+    
+    # Couleurs pour les différentes périodes (pour reste à faire)
+    colors_periods = ['#e74c3c', '#2ecc71', '#f39c12']
+    
+    # Ajouter les barres TX avec axe Y principal (pourcentages) pour chaque colonne et financeur
+    for idx, tx_col in enumerate(tx_columns):
+        period = tx_col.replace('TX DE REALISATION', '').strip().replace('/', '').strip()
+        period_name = period if period else "TX"
+        
+        for financeur in financeurs_to_show:
+            df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
+            y_values = []
+            
+            for region in region_order:
+                try:
+                    if region in df_financeur.index.tolist():
+                        val = df_financeur.loc[region, tx_col]
+                        if pd.notna(val):
+                            y_values.append(float(val) * 100)
+                        else:
+                            y_values.append(0)
+                    else:
+                        y_values.append(0)
+                except:
+                    y_values.append(0)
+            
+            # Nom de la trace avec financeur et période
+            trace_name = f'{financeur} - {period_name}'
+            
+            fig.add_trace(go.Bar(
+                name=trace_name,
+                x=region_order,
+                y=y_values,
+                marker_color=financeur_colors.get(financeur, '#34495e'),
+                text=[f"{v:.1f}%" if v > 0 else "" for v in y_values],
+                textposition='inside',
+                yaxis='y',
+                legendgroup=f'{financeur}_{period_name}',
+                showlegend=True,
+                opacity=0.9 - (idx * 0.1)
+            ))
+    
+    # Reste à faire avec axe Y secondaire si disponible
+    if reste_a_faire_col:
+        for financeur in financeurs_to_show:
+            df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
+            y_values = []
+            
+            for region in region_order:
+                try:
+                    if region in df_financeur.index.tolist():
+                        val = df_financeur.loc[region, reste_a_faire_col]
+                        if pd.notna(val):
+                            y_values.append(float(val))
+                        else:
+                            y_values.append(0)
+                    else:
+                        y_values.append(0)
+                except:
+                    y_values.append(0)
+            
+            fig.add_trace(go.Bar(
+                name=f'{financeur} - Reste à Faire',
+                x=region_order,
+                y=y_values,
+                marker=dict(
+                    color=financeur_colors.get(financeur, '#34495e'),
+                    pattern_shape="/"
+                ),
+                text=[f"{v:,.0f}" if v != 0 else "" for v in y_values],
+                textposition='outside',
+                yaxis='y2',
+                legendgroup=f'{financeur}_reste',
+                showlegend=True,
+                opacity=0.6
+            ))
+    
+    # Configuration du graphique avec double axe Y
+    fig.update_layout(
+        title="🎯 Analyse d'Atterrissage : TX Réalisation et Reste à Faire par Région et Financeur",
+        xaxis_title="Régions",
+        yaxis=dict(
+            title="Taux de Réalisation (%)",
+            tickformat=".1f",
+            ticksuffix="%",
+            side='left'
+        ),
+        yaxis2=dict(
+            title="Reste à Faire (valeurs)",
+            overlaying='y',
+            side='right',
+            tickformat=',.0f'
+        ),
+        height=700,
+        barmode='group',
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        xaxis_tickangle=-45
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Statistiques récapitulatives
+    create_landing_statistics_financeurs(df_viz, tx_columns, reste_a_faire_col)
+
+def create_landing_statistics_financeurs(df, tx_columns, reste_a_faire_col):
+    """Crée les statistiques récapitulatives pour l'atterrissage par financeurs"""
+    
+    st.markdown("### 📊 Statistiques d'Atterrissage par Financeurs")
+    
+    # Créer les colonnes pour les métriques
+    num_metrics = min(len(tx_columns) + (1 if reste_a_faire_col else 0) + 1, 4)
+    cols = st.columns(num_metrics)
+    
+    col_idx = 0
+    
+    # Afficher les statistiques pour chaque colonne TX
+    for idx, tx_col in enumerate(tx_columns[:2]):
+        period = tx_col.replace('TX DE REALISATION', '').strip().replace('/', '').strip()
+        period_name = period if period else "TX"
+        
+        avg_tx = df[tx_col].mean() * 100
+        max_idx = df[tx_col].idxmax()
+        best_region = f"{df.loc[max_idx, 'Region']} ({df.loc[max_idx, 'Financeur']})"
+        best_tx = df.loc[max_idx, tx_col] * 100
+        
+        with cols[col_idx]:
+            st.metric(
+                label=f"🎯 TX Moyen {period_name}",
+                value=f"{avg_tx:.1f}%",
+                help=f"Meilleur: {best_region} avec {best_tx:.1f}%"
+            )
+        col_idx += 1
+        if col_idx >= num_metrics:
+            break
+    
+    # Reste à faire moyen
+    if reste_a_faire_col and col_idx < num_metrics:
+        avg_reste = df[reste_a_faire_col].mean()
+        with cols[col_idx]:
+            st.metric(
+                label="📋 Reste à Faire Moyen",
+                value=f"{avg_reste:,.0f}",
+                help="Moyenne du reste à faire par région/financeur"
+            )
+        col_idx += 1
+    
+    # Meilleur financeur (basé sur la première colonne TX)
+    if col_idx < num_metrics and len(tx_columns) > 0:
+        financeur_avg = df.groupby('Financeur')[tx_columns[0]].mean()
+        best_financeur = financeur_avg.idxmax()
+        best_financeur_tx = financeur_avg.max() * 100
+        
+        with cols[col_idx]:
+            st.metric(
+                label="🏆 Meilleur Financeur",
+                value=best_financeur,
+                help=f"TX moyen: {best_financeur_tx:.1f}%"
+            )
+    
+    # Tableau détaillé
+    with st.expander("📋 Données Détaillées par Région et Financeur"):
+        display_df = df[['Region', 'Financeur'] + tx_columns + ([reste_a_faire_col] if reste_a_faire_col else [])]
+        
+        # Formater les colonnes TX en pourcentages
+        for tx_col in tx_columns:
+            display_df[tx_col] = display_df[tx_col].apply(lambda x: f"{x*100:.1f}%" if pd.notna(x) else "-")
+        
+        if reste_a_faire_col:
+            display_df[reste_a_faire_col] = display_df[reste_a_faire_col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "-")
+        
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
 def create_landing_visualization(df):
     """Crée la visualisation d'atterrissage avec barres multiples par période"""
     
@@ -1149,7 +1475,7 @@ def show_landing_analysis():
     st.markdown("---")
     
     # Tabs pour différentes vues
-    tab1, tab2 = st.tabs(["📊 Analyse TX Réalisation", "💰 Analyse Financeurs"])
+    tab1, tab2, tab3 = st.tabs(["📊 Analyse TX Réalisation", "💰 Analyse Financeurs (Feuil1)", "🎯 Analyse par Financeurs (Feuil2)"])
     
     with tab1:
         try:
@@ -1183,6 +1509,25 @@ def show_landing_analysis():
             
         except Exception as e:
             st.error(f"❌ Erreur lors de la génération de l'analyse financeurs: {str(e)}")
+            st.info("💡 Assurez-vous que votre fichier contient une feuille 'Feuil2' avec les colonnes requises")
+            
+            # Debug info
+            with st.expander("🔧 Informations de Debug"):
+                st.write(str(e))
+    
+    with tab3:
+        # Charger la Feuil2 pour l'analyse d'atterrissage par financeurs
+        try:
+            if import_method == "Upload d'un nouveau fichier":
+                df_financeurs2 = pd.read_excel(uploaded_file, sheet_name='Feuil2')
+            else:
+                df_financeurs2 = pd.read_excel(custom_path, sheet_name='Feuil2')
+            
+            # Graphique d'atterrissage avec filtres par financeurs
+            create_landing_visualization_with_financeurs(df_financeurs2)
+            
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la génération de l'analyse par financeurs: {str(e)}")
             st.info("💡 Assurez-vous que votre fichier contient une feuille 'Feuil2' avec les colonnes requises")
             
             # Debug info
