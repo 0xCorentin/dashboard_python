@@ -47,10 +47,20 @@ def create_financeurs_visualization(df):
     for idx, row in df.iterrows():
         region_name = row['Régions']
         
+        # Ignorer les lignes complètement vides
+        if pd.isna(region_name) or str(region_name).strip() == '':
+            continue
+        
+        # Nettoyer le nom de région (supprimer espaces superflus)
+        region_name = str(region_name).strip()
+        
         # Si c'est une région (pas un financeur)
         if region_name not in financeurs_list:
-            # Vérifier que ce n'est pas un total
-            if not pd.isna(region_name) and not any(x in str(region_name).lower() for x in ['total', 'ensemble', 'dispositif national']):
+            # Vérifier que ce n'est pas un total à exclure
+            if any(x in str(region_name).lower() for x in ['total', 'ensemble']):
+                # Réinitialiser current_region pour éviter d'associer les financeurs suivants à la mauvaise région
+                current_region = None
+            else:
                 current_region = region_name
         # Si c'est un financeur et qu'on a une région courante
         elif current_region is not None and region_name in financeurs_list:
@@ -136,14 +146,10 @@ def create_financeurs_visualization(df):
     # Créer le graphique
     fig = go.Figure()
     
-    # Couleurs pour les financeurs
-    financeur_colors = {
-        'B2C - CPF': '#3498db',
-        'B2C - CPFT': '#2ecc71',
-        "Marché de l'Alternance": '#9b59b6',
-        'Marché des Entreprises': '#e74c3c',
-        'Marché Public': '#f39c12',
-        'Pas de financeur': '#95a5a6'
+    # Couleurs exactes du graphique d'atterrissage original
+    metric_colors = {
+        'HTS': '#3498db',      # Bleu
+        'Budget': '#e74c3c'     # Rouge
     }
     
     # Ajouter les barres pour chaque financeur
@@ -168,7 +174,7 @@ def create_financeurs_visualization(df):
                 name=f'{financeur} (HTS)',
                 x=region_order,
                 y=y_values,
-                marker_color=financeur_colors.get(financeur, '#34495e'),
+                marker_color=metric_colors['HTS'],  # Bleu pour toutes les HTS
                 text=[f"{v:,.0f}" if v > 0 else "" for v in y_values],
                 textposition='inside',
                 legendgroup=financeur,
@@ -202,7 +208,7 @@ def create_financeurs_visualization(df):
                 name=f'{financeur}{name_suffix}',
                 x=region_order,
                 y=y_values,
-                marker_color=financeur_colors.get(financeur, '#34495e'),
+                marker_color=metric_colors['Budget'],  # Rouge pour tous les Budgets
                 text=[f"{v:,.0f}" if v > 0 else "" for v in y_values],
                 textposition='inside',
                 legendgroup=financeur if metric_choice == "Budget" else f'{financeur}_budget',
@@ -287,10 +293,20 @@ def create_financeurs_visualization_decembre(df):
     for idx, row in df.iterrows():
         region_name = row['Régions']
         
+        # Ignorer les lignes complètement vides
+        if pd.isna(region_name) or str(region_name).strip() == '':
+            continue
+        
+        # Nettoyer le nom de région (supprimer espaces superflus)
+        region_name = str(region_name).strip()
+        
         # Si c'est une région (pas un financeur)
         if region_name not in financeurs_list:
-            # Vérifier que ce n'est pas un total
-            if not pd.isna(region_name) and not any(x in str(region_name).lower() for x in ['total', 'ensemble', 'dispositif national']):
+            # Vérifier que ce n'est pas un total à exclure
+            if any(x in str(region_name).lower() for x in ['total', 'ensemble']):
+                # Réinitialiser current_region pour éviter d'associer les financeurs suivants à la mauvaise région
+                current_region = None
+            else:
                 current_region = region_name
         # Si c'est un financeur et qu'on a une région courante
         elif current_region is not None and region_name in financeurs_list:
@@ -382,14 +398,13 @@ def create_financeurs_visualization_decembre(df):
     # Créer le graphique
     fig = go.Figure()
     
-    # Couleurs pour les financeurs - base
-    financeur_colors_base = {
-        'B2C - CPF': '#3498db',
-        'B2C - CPFT': '#2ecc71',
-        "Marché de l'Alternance": '#9b59b6',
-        'Marché des Entreprises': '#e74c3c',
-        'Marché Public': '#f39c12',
-        'Pas de financeur': '#95a5a6'
+    # Couleurs exactes du graphique d'atterrissage original
+    metric_colors = {
+        'Total_HTS_Suites': '#3498db',    # Bleu
+        'Suites_Parcours': '#e74c3c',     # Rouge  
+        'Budget': '#f39c12',              # Orange
+        'Reste_A_Faire': '#27ae60',       # Vert
+        'TX_Realisation': '#9b59b6'       # Violet
     }
     
     # Déterminer les colonnes de données à afficher
@@ -427,14 +442,8 @@ def create_financeurs_visualization_decembre(df):
             elif data_col == 'TX_Realisation':
                 metric_name = 'TX'
             
-            # Ajuster la couleur selon la métrique
-            base_color = financeur_colors_base.get(financeur, '#34495e')
-            if idx == 0:
-                color = base_color
-            elif idx == 1:
-                color = base_color + 'cc'  # Légèrement transparent
-            else:
-                color = base_color + '99'  # Plus transparent
+            # Couleur selon la métrique (même couleur pour tous les financeurs)
+            color = metric_colors.get(data_col, '#5470c6')
             
             fig.add_trace(go.Bar(
                 name=f'{financeur} - {metric_name}',
@@ -728,9 +737,20 @@ def create_landing_visualization_with_financeurs(df):
     for idx, row in df.iterrows():
         region_name = row['Régions']
         
+        # Ignorer les lignes complètement vides
+        if pd.isna(region_name) or str(region_name).strip() == '':
+            continue
+        
+        # Nettoyer le nom de région (supprimer espaces superflus)
+        region_name = str(region_name).strip()
+        
         # Si c'est une région (pas un financeur)
         if region_name not in financeurs_list:
-            if not pd.isna(region_name) and not any(x in str(region_name).lower() for x in ['total', 'ensemble', 'dispositif national']):
+            # Vérifier que ce n'est pas un total à exclure
+            if any(x in str(region_name).lower() for x in ['total', 'ensemble']):
+                # Réinitialiser current_region pour éviter d'associer les financeurs suivants à la mauvaise région
+                current_region = None
+            else:
                 current_region = region_name
         # Si c'est un financeur et qu'on a une région courante
         elif current_region is not None and region_name in financeurs_list:
@@ -838,23 +858,26 @@ def create_landing_visualization_with_financeurs(df):
     # Créer le graphique avec barres multiples
     fig = go.Figure()
     
-    # Couleurs pour les financeurs
-    financeur_colors = {
-        'B2C - CPF': '#3498db',
-        'B2C - CPFT': '#2ecc71',
-        "Marché de l'Alternance": '#9b59b6',
-        'Marché des Entreprises': '#e74c3c',
-        'Marché Public': '#f39c12',
-        'Pas de financeur': '#95a5a6'
+    # Couleurs exactes du graphique d'atterrissage original
+    metric_colors = {
+        'TX_Octobre': '#3498db',      # Bleu (TX Réalisation A FIN OCTOBRE)
+        'TX_Decembre': '#e74c3c',     # Rouge (TX Réalisation AU BUDGET A FIN DECEMBRE)
+        'Reste_A_Faire': '#f39c12',   # Orange (Reste à Faire)
+        'Surplus': '#27ae60'          # Vert (Surplus/dépassement)
     }
-    
-    # Couleurs pour les différentes périodes (pour reste à faire)
-    colors_periods = ['#e74c3c', '#2ecc71', '#f39c12']
     
     # Ajouter les barres TX avec axe Y principal (pourcentages) pour chaque colonne et financeur
     for idx, tx_col in enumerate(tx_columns):
         period = tx_col.replace('TX DE REALISATION', '').strip().replace('/', '').strip()
         period_name = period if period else "TX"
+        
+        # Déterminer la couleur selon la période
+        if 'OCTOBRE' in tx_col.upper():
+            bar_color = metric_colors['TX_Octobre']  # Bleu
+        elif 'DECEMBRE' in tx_col.upper():
+            bar_color = metric_colors['TX_Decembre']  # Rouge
+        else:
+            bar_color = metric_colors['TX_Octobre']  # Bleu par défaut
         
         for financeur in financeurs_to_show:
             df_financeur = df_viz[df_viz['Financeur'] == financeur].set_index('Region')
@@ -880,13 +903,13 @@ def create_landing_visualization_with_financeurs(df):
                 name=trace_name,
                 x=region_order,
                 y=y_values,
-                marker_color=financeur_colors.get(financeur, '#34495e'),
+                marker_color=bar_color,  # Couleur selon la métrique
                 text=[f"{v:.1f}%" if v > 0 else "" for v in y_values],
                 textposition='inside',
                 yaxis='y',
                 legendgroup=f'{financeur}_{period_name}',
                 showlegend=True,
-                opacity=0.9 - (idx * 0.1),
+                opacity=1.0,
                 offsetgroup=idx
             ))
     
@@ -932,18 +955,12 @@ def create_landing_visualization_with_financeurs(df):
                     y_values_reste.append(0)
                     y_values_surplus.append(0)
             
-            # Couleur différente pour Reste à Faire
-            base_color = financeur_colors.get(financeur, '#34495e')
-            reste_color = base_color.replace('#3498db', '#1f5f8b').replace('#2ecc71', '#1e8449') \
-                                     .replace('#9b59b6', '#6c3483').replace('#e74c3c', '#a93226') \
-                                     .replace('#f39c12', '#b9770e').replace('#95a5a6', '#626567')
-            
-            # Ajouter la barre Reste à Faire (sur axe Y2)
+            # Ajouter la barre Reste à Faire (sur axe Y2) - couleur orange
             fig.add_trace(go.Bar(
                 name=f'{financeur} - Reste à Faire',
                 x=region_order,
                 y=y_values_reste,
-                marker_color=reste_color,
+                marker_color=metric_colors['Reste_A_Faire'],  # Orange
                 text=[f"{v:,.0f}" if v > 0 else "" for v in y_values_reste],
                 textposition='outside',
                 yaxis='y2',
@@ -953,15 +970,13 @@ def create_landing_visualization_with_financeurs(df):
                 offsetgroup=len(tx_columns)
             ))
             
-            # Ajouter la barre Surplus qui dépasse les 100%
+            # Ajouter la barre Surplus qui dépasse les 100% - couleur verte
             if any(v > 0 for v in y_values_surplus):
-                surplus_color = '#1abc9c'  # Turquoise/cyan
-                
                 fig.add_trace(go.Bar(
                     name=f'{financeur} - Surplus (dépassement)',
                     x=region_order,
                     y=y_values_surplus,
-                    marker_color=surplus_color,
+                    marker_color=metric_colors['Surplus'],  # Vert
                     text=[f"+{abs(df_financeur.loc[region_order[i], reste_a_faire_col]):,.0f}" if y_values_surplus[i] > 0 and region_order[i] in df_financeur.index else "" for i in range(len(region_order))],
                     textposition='outside',
                     yaxis='y',
