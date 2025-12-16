@@ -1135,36 +1135,49 @@ def create_feuil3_visualization(df):
         st.markdown("### 📊 Analyse hebdomadaire par financeurs")
         
         try:
-            # Charger les données du fichier Excel spécifique
-            excel_path = 'c:/Dashboard/analyseur_hebdomadaire/flux_model.xlsx'
-            df_excel = pd.read_excel(excel_path, sheet_name='Feuil3')
+            # Utiliser les données déjà chargées (df) au lieu de charger un nouveau fichier
+            # Préparer les données pour l'analyse par financeurs
+            df_financeurs_raw = df.copy()
             
-            # Traiter les données pour avoir une structure propre Region-Financeur
-            processed_data = []
-            current_region = None
+            # Identifier les colonnes pour 2024, 2025 et Écart
+            # Rechercher les colonnes pertinentes
+            col_entrees_2024 = None
+            col_entrees_2025 = None
+            col_ecart = None
             
-            for _, row in df_excel.iterrows():
-                if pd.notna(row['Régions']) and row['Régions'] != 'Total général':
-                    current_region = row['Régions']
-                    # La première ligne de région contient aussi un financeur
-                    processed_data.append({
-                        'REGION': current_region,
-                        'FINANCEURS': row['Financeurs'],
-                        'Entrées 2024': row['Nb. de stagiaires entrés 2024'],
-                        'Entrées 2025': row['Nb. de stagiaires entrés 2025'],
-                        'Écart': row['Ecart\n(2025-2024)']
-                    })
-                elif pd.notna(row['Financeurs']) and current_region:
-                    # Lignes suivantes avec des financeurs pour la même région
-                    processed_data.append({
-                        'REGION': current_region,
-                        'FINANCEURS': row['Financeurs'],
-                        'Entrées 2024': row['Nb. de stagiaires entrés 2024'],
-                        'Entrées 2025': row['Nb. de stagiaires entrés 2025'],
-                        'Écart': row['Ecart\n(2025-2024)']
-                    })
+            for col in df_financeurs_raw.columns:
+                col_lower = str(col).lower()
+                if 'entrées' in col_lower or 'entrees' in col_lower or 'entrés' in col_lower or 'entres' in col_lower:
+                    if '2024' in str(col):
+                        col_entrees_2024 = col
+                    elif '2025' in str(col):
+                        col_entrees_2025 = col
+                elif 'ecart' in col_lower or 'écart' in col_lower:
+                    col_ecart = col
             
-            df_financeurs = pd.DataFrame(processed_data)
+            # Créer le DataFrame formaté
+            df_financeurs = df_financeurs_raw.copy()
+            df_financeurs = df_financeurs.rename(columns={
+                col_entrees_2024: 'Entrées 2024' if col_entrees_2024 else 'Entrées 2024',
+                col_entrees_2025: 'Entrées 2025' if col_entrees_2025 else 'Entrées 2025',
+                col_ecart: 'Écart' if col_ecart else 'Écart'
+            })
+            
+            # S'assurer que les colonnes existent, sinon les créer avec des valeurs par défaut
+            if 'Entrées 2024' not in df_financeurs.columns and col_entrees_2024:
+                df_financeurs['Entrées 2024'] = df_financeurs_raw[col_entrees_2024]
+            elif 'Entrées 2024' not in df_financeurs.columns:
+                df_financeurs['Entrées 2024'] = 0
+                
+            if 'Entrées 2025' not in df_financeurs.columns and col_entrees_2025:
+                df_financeurs['Entrées 2025'] = df_financeurs_raw[col_entrees_2025]
+            elif 'Entrées 2025' not in df_financeurs.columns:
+                df_financeurs['Entrées 2025'] = 0
+                
+            if 'Écart' not in df_financeurs.columns and col_ecart:
+                df_financeurs['Écart'] = df_financeurs_raw[col_ecart]
+            elif 'Écart' not in df_financeurs.columns:
+                df_financeurs['Écart'] = df_financeurs['Entrées 2025'] - df_financeurs['Entrées 2024']
             
             # Filtrer selon les régions sélectionnées
             df_financeurs_filtered = df_financeurs[df_financeurs['REGION'].isin(regions_to_show)].copy()
@@ -1363,7 +1376,7 @@ def create_feuil3_visualization(df):
                 
         except Exception as e:
             st.error(f"❌ Erreur lors du chargement des données financeurs : {str(e)}")
-            st.info("💡 Vérifiez que le fichier 'c:/Dashboard/analyseur_hebdomadaire/flux_model.xlsx' existe et contient la feuille 'Feuil3'")
+            st.info("💡 Vérifiez que votre fichier contient les colonnes nécessaires : REGION, FINANCEURS, et les colonnes pour 2024 et 2025")
         
         # KPI de Comparaison pour la vue simple
         st.markdown("### 📈 KPI de Comparaison 2024 vs 2025")
