@@ -11,6 +11,10 @@ import numpy as np
 from datetime import datetime
 from plotly.subplots import make_subplots
 
+# Obtenir l'année en cours pour la comparaison dynamique
+current_year = datetime.now().year
+previous_year = current_year - 1
+
 # Import des fonctions utilitaires
 from utils import (
     load_entrees_sorties_data, load_monthly_data, load_feuil3_data, 
@@ -914,12 +918,12 @@ def create_feuil3_visualization(df):
             key="feuil3_metric"
         )
     
-    # Détecter automatiquement si des colonnes 2024 et 2025 existent
-    cols_2024 = [col for col in metric_cols if '2024' in str(col) and 'Ecart' not in str(col)]
-    cols_2025 = [col for col in metric_cols if '2025' in str(col) and 'Ecart' not in str(col)]
+    # Détecter automatiquement si des colonnes année précédente et année en cours existent
+    cols_previous = [col for col in metric_cols if str(previous_year) in str(col) and 'Ecart' not in str(col)]
+    cols_current = [col for col in metric_cols if str(current_year) in str(col) and 'Ecart' not in str(col)]
     cols_ecart = [col for col in metric_cols if 'Ecart' in str(col) or 'écart' in str(col).lower()]
     
-    can_compare_years = len(cols_2024) > 0 and len(cols_2025) > 0
+    can_compare_years = len(cols_previous) > 0 and len(cols_current) > 0
     
     # Option de comparaison d'années
     st.markdown("### 🔄 Options de Comparaison")
@@ -931,20 +935,20 @@ def create_feuil3_visualization(df):
         if can_compare_years:
             comparison_mode = st.selectbox(
                 "📊 Mode d'analyse:",
-                ["Vue simple", "Comparaison 2024 vs 2025"],
+                ["Vue simple", f"Comparaison {previous_year} vs {current_year}"],
                 key="feuil3_comparison_mode"
             )
         else:
             comparison_mode = "Vue simple"
-            st.info("ℹ️ Mode comparaison indisponible (colonnes 2024/2025 manquantes)")
+            st.info(f"ℹ️ Mode comparaison indisponible (colonnes {previous_year}/{current_year} manquantes)")
 
     with col_comp2:
-        if comparison_mode == "Comparaison 2024 vs 2025" and can_compare_years:
+        if comparison_mode == f"Comparaison {previous_year} vs {current_year}" and can_compare_years:
             # Déterminer les métriques de base (sans l'année)
             base_metrics = set()
-            for col in cols_2024:
-                # Enlever "2024" et nettoyer le nom
-                base_name = col.replace('2024', '').replace('_2024', '').strip()
+            for col in cols_previous:
+                # Enlever l'année précédente et nettoyer le nom
+                base_name = col.replace(str(previous_year), '').replace(f'_{previous_year}', '').strip()
                 # Enlever les caractères de ponctuation en début/fin
                 base_name = base_name.strip(' -_.,')
                 if base_name:
@@ -960,7 +964,7 @@ def create_feuil3_visualization(df):
                 comparison_metric = None
                 st.warning("⚠️ Impossible de déterminer les métriques à comparer")
         elif comparison_mode == "Vue simple":
-            st.info("💡 Sélectionnez 'Comparaison 2024 vs 2025' pour comparer les années")
+            st.info(f"💡 Sélectionnez 'Comparaison {previous_year} vs {current_year}' pour comparer les années")
     
     # Toujours utiliser la vue simple
     graph_type = "Vue simple (métrique sélectionnée)"
@@ -979,131 +983,131 @@ def create_feuil3_visualization(df):
         st.warning("⚠️ Aucune donnée à afficher avec les filtres sélectionnés")
         return
     
-    # ========== MODE COMPARAISON 2024 vs 2025 ==========
-    if comparison_mode == "Comparaison 2024 vs 2025" and can_compare_years and comparison_metric:
+    # ========== MODE COMPARAISON ANNUEL ==========
+    if comparison_mode == f"Comparaison {previous_year} vs {current_year}" and can_compare_years and comparison_metric:
             
-        st.markdown("### 📊 Comparaison 2024 vs 2025")
+        st.markdown(f"### 📊 Comparaison {previous_year} vs {current_year}")
         
-        # Construire les noms de colonnes pour 2024 et 2025
+        # Construire les noms de colonnes pour l'année précédente et l'année en cours
         # Chercher les colonnes correspondantes à la métrique choisie
-        possible_cols_2024 = []
-        possible_cols_2025 = []
+        possible_cols_previous = []
+        possible_cols_current = []
         
         # Essayer plusieurs variantes de recherche
         if comparison_metric:
             search_patterns = [
                 comparison_metric,  # Nom exact
-                f"{comparison_metric} 2024",  # Avec année
+                f"{comparison_metric} {previous_year}",  # Avec année précédente
                 comparison_metric.replace('.', '').replace(',', ''),  # Sans ponctuation
             ]
             
             for pattern in search_patterns:
-                if not possible_cols_2024:
-                    possible_cols_2024 = [c for c in cols_2024 if pattern.lower() in c.lower()]
-                if not possible_cols_2025:
-                    possible_cols_2025 = [c for c in cols_2025 if pattern.lower() in c.lower()]
+                if not possible_cols_previous:
+                    possible_cols_previous = [c for c in cols_previous if pattern.lower() in c.lower()]
+                if not possible_cols_current:
+                    possible_cols_current = [c for c in cols_current if pattern.lower() in c.lower()]
                 
-                if possible_cols_2024 and possible_cols_2025:
+                if possible_cols_previous and possible_cols_current:
                     break
             
             # Si on n'a toujours pas trouvé, chercher juste avec une partie du nom
-            if not possible_cols_2024 or not possible_cols_2025:
+            if not possible_cols_previous or not possible_cols_current:
                 # Prendre le premier mot significatif
                 first_word = comparison_metric.split()[0] if ' ' in comparison_metric else comparison_metric
-                possible_cols_2024 = [c for c in cols_2024 if first_word.lower() in c.lower()]
-                possible_cols_2025 = [c for c in cols_2025 if first_word.lower() in c.lower()]
+                possible_cols_previous = [c for c in cols_previous if first_word.lower() in c.lower()]
+                possible_cols_current = [c for c in cols_current if first_word.lower() in c.lower()]
         
         # Vérifier qu'on a bien trouvé des colonnes
-        if not possible_cols_2024 or not possible_cols_2025:
+        if not possible_cols_previous or not possible_cols_current:
             st.error(f"❌ Impossible de trouver les colonnes pour '{comparison_metric}'")
             
             with st.expander("🔍 Informations de Debug - Colonnes Détectées"):
                 st.write(f"**Métrique recherchée:** {comparison_metric}")
-                st.write(f"**Colonnes 2024 disponibles:** {', '.join(cols_2024) if cols_2024 else 'Aucune'}")
-                st.write(f"**Colonnes 2025 disponibles:** {', '.join(cols_2025) if cols_2025 else 'Aucune'}")
+                st.write(f"**Colonnes {previous_year} disponibles:** {', '.join(cols_previous) if cols_previous else 'Aucune'}")
+                st.write(f"**Colonnes {current_year} disponibles:** {', '.join(cols_current) if cols_current else 'Aucune'}")
                 st.write(f"**Colonnes d'écart disponibles:** {', '.join(cols_ecart) if cols_ecart else 'Aucune'}")
                 st.write(f"**Toutes les colonnes métriques:** {', '.join(metric_cols)}")
             
             return
         
-        col_2024 = possible_cols_2024[0]
-        col_2025 = possible_cols_2025[0]
+        col_previous = possible_cols_previous[0]
+        col_current = possible_cols_current[0]
         
         # Chercher la colonne d'écart si elle existe
         col_ecart = None
         if cols_ecart:
-            ecart_matches = [c for c in cols_ecart if '2025' in c and '2024' in c]
+            ecart_matches = [c for c in cols_ecart if str(current_year) in c and str(previous_year) in c]
             if ecart_matches:
                 col_ecart = ecart_matches[0]
         
-        st.info(f"📊 Comparaison: **{col_2024}** vs **{col_2025}**" + 
+        st.info(f"📊 Comparaison: **{col_previous}** vs **{col_current}**" + 
                 (f" | Écart: **{col_ecart}**" if col_ecart else ""))
         
-        # Calculer l'ordre des régions par total 2025
-        region_totals_2025 = df_filtered.groupby('REGION')[col_2025].sum().sort_values(ascending=False)
-        region_order = region_totals_2025.index.tolist()
+        # Calculer l'ordre des régions par total année en cours
+        region_totals_current = df_filtered.groupby('REGION')[col_current].sum().sort_values(ascending=False)
+        region_order = region_totals_current.index.tolist()
         
 
         
         # Afficher le graphique en vue simple
-        st.markdown("### 📊 Comparaison 2024 vs 2025")
+        st.markdown(f"### 📊 Comparaison {previous_year} vs {current_year}")
         
         fig_compare = go.Figure()
         
-        # Barres pour 2024 (toutes régions)
-        regions_2024 = []
-        values_2024 = []
+        # Barres pour l'année précédente (toutes régions)
+        regions_previous = []
+        values_previous = []
         for region in region_order:
             region_data = df_filtered[df_filtered['REGION'] == region]
-            if not region_data.empty and col_2024 in region_data.columns:
-                regions_2024.append(region)
-                values_2024.append(region_data[col_2024].sum())
+            if not region_data.empty and col_previous in region_data.columns:
+                regions_previous.append(region)
+                values_previous.append(region_data[col_previous].sum())
         
         fig_compare.add_trace(go.Bar(
-            x=regions_2024,
-            y=values_2024,
-            name='2024',
+            x=regions_previous,
+            y=values_previous,
+            name=str(previous_year),
             marker_color='#FF6B6B',
-            text=[f"{val:,.0f}" for val in values_2024],
+            text=[f"{val:,.0f}" for val in values_previous],
             textposition='outside',
             offsetgroup=0
         ))
         
-        # Barres pour 2025 (toutes régions)
-        regions_2025 = []
-        values_2025 = []
+        # Barres pour l'année en cours (toutes régions)
+        regions_current = []
+        values_current = []
         for region in region_order:
             region_data = df_filtered[df_filtered['REGION'] == region]
-            if not region_data.empty and col_2025 in region_data.columns:
-                regions_2025.append(region)
-                values_2025.append(region_data[col_2025].sum())
+            if not region_data.empty and col_current in region_data.columns:
+                regions_current.append(region)
+                values_current.append(region_data[col_current].sum())
         
         fig_compare.add_trace(go.Bar(
-            x=regions_2025,
-            y=values_2025,
-            name='2025',
+            x=regions_current,
+            y=values_current,
+            name=str(current_year),
             marker_color='#4ECDC4',
-            text=[f"{val:,.0f}" for val in values_2025],
+            text=[f"{val:,.0f}" for val in values_current],
             textposition='outside',
             offsetgroup=1
         ))
         
-        # Calculer et ajouter les écarts (2025 - 2024)
+        # Calculer et ajouter les écarts (année courante - année précédente)
         regions_ecart = []
         values_ecart = []
         for region in region_order:
             region_data = df_filtered[df_filtered['REGION'] == region]
             if not region_data.empty:
-                value_2024 = region_data[col_2024].sum() if col_2024 in region_data.columns else 0
-                value_2025 = region_data[col_2025].sum() if col_2025 in region_data.columns else 0
-                ecart = value_2025 - value_2024
+                value_previous = region_data[col_previous].sum() if col_previous in region_data.columns else 0
+                value_current = region_data[col_current].sum() if col_current in region_data.columns else 0
+                ecart = value_current - value_previous
                 regions_ecart.append(region)
                 values_ecart.append(ecart)
         
         fig_compare.add_trace(go.Bar(
             x=regions_ecart,
             y=values_ecart,
-            name='Écart (2025-2024)',
+            name=f'Écart ({current_year}-{previous_year})',
             marker_color='#FFB347',  # Orange pour l'écart
             text=[f"{val:+,.0f}" for val in values_ecart],  # Afficher le signe + ou -
             textposition='outside',
@@ -1112,7 +1116,7 @@ def create_feuil3_visualization(df):
         
         # Configuration du graphique simple
         fig_compare.update_layout(
-            title=f"📊 Comparaison {comparison_metric} : 2024 vs 2025 avec Écart",
+            title=f"📊 Comparaison {comparison_metric} : {previous_year} vs {current_year} avec Écart",
             xaxis_title="Régions",
             yaxis_title=comparison_metric,
             height=700,
@@ -1139,45 +1143,45 @@ def create_feuil3_visualization(df):
             # Préparer les données pour l'analyse par financeurs
             df_financeurs_raw = df.copy()
             
-            # Identifier les colonnes pour 2024, 2025 et Écart
+            # Identifier les colonnes pour l'année précédente, année en cours et Écart
             # Rechercher les colonnes pertinentes
-            col_entrees_2024 = None
-            col_entrees_2025 = None
+            col_entrees_previous = None
+            col_entrees_current = None
             col_ecart = None
             
             for col in df_financeurs_raw.columns:
                 col_lower = str(col).lower()
                 if 'entrées' in col_lower or 'entrees' in col_lower or 'entrés' in col_lower or 'entres' in col_lower:
-                    if '2024' in str(col):
-                        col_entrees_2024 = col
-                    elif '2025' in str(col):
-                        col_entrees_2025 = col
+                    if str(previous_year) in str(col):
+                        col_entrees_previous = col
+                    elif str(current_year) in str(col):
+                        col_entrees_current = col
                 elif 'ecart' in col_lower or 'écart' in col_lower:
                     col_ecart = col
             
             # Créer le DataFrame formaté
             df_financeurs = df_financeurs_raw.copy()
             df_financeurs = df_financeurs.rename(columns={
-                col_entrees_2024: 'Entrées 2024' if col_entrees_2024 else 'Entrées 2024',
-                col_entrees_2025: 'Entrées 2025' if col_entrees_2025 else 'Entrées 2025',
+                col_entrees_previous: f'Entrées {previous_year}' if col_entrees_previous else f'Entrées {previous_year}',
+                col_entrees_current: f'Entrées {current_year}' if col_entrees_current else f'Entrées {current_year}',
                 col_ecart: 'Écart' if col_ecart else 'Écart'
             })
             
             # S'assurer que les colonnes existent, sinon les créer avec des valeurs par défaut
-            if 'Entrées 2024' not in df_financeurs.columns and col_entrees_2024:
-                df_financeurs['Entrées 2024'] = df_financeurs_raw[col_entrees_2024]
-            elif 'Entrées 2024' not in df_financeurs.columns:
-                df_financeurs['Entrées 2024'] = 0
+            if f'Entrées {previous_year}' not in df_financeurs.columns and col_entrees_previous:
+                df_financeurs[f'Entrées {previous_year}'] = df_financeurs_raw[col_entrees_previous]
+            elif f'Entrées {previous_year}' not in df_financeurs.columns:
+                df_financeurs[f'Entrées {previous_year}'] = 0
                 
-            if 'Entrées 2025' not in df_financeurs.columns and col_entrees_2025:
-                df_financeurs['Entrées 2025'] = df_financeurs_raw[col_entrees_2025]
-            elif 'Entrées 2025' not in df_financeurs.columns:
-                df_financeurs['Entrées 2025'] = 0
+            if f'Entrées {current_year}' not in df_financeurs.columns and col_entrees_current:
+                df_financeurs[f'Entrées {current_year}'] = df_financeurs_raw[col_entrees_current]
+            elif f'Entrées {current_year}' not in df_financeurs.columns:
+                df_financeurs[f'Entrées {current_year}'] = 0
                 
             if 'Écart' not in df_financeurs.columns and col_ecart:
                 df_financeurs['Écart'] = df_financeurs_raw[col_ecart]
             elif 'Écart' not in df_financeurs.columns:
-                df_financeurs['Écart'] = df_financeurs['Entrées 2025'] - df_financeurs['Entrées 2024']
+                df_financeurs['Écart'] = df_financeurs[f'Entrées {current_year}'] - df_financeurs[f'Entrées {previous_year}']
             
             # Filtrer selon les régions sélectionnées
             df_financeurs_filtered = df_financeurs[df_financeurs['REGION'].isin(regions_to_show)].copy()
@@ -1203,7 +1207,7 @@ def create_feuil3_visualization(df):
                     # Option pour l'ordre d'affichage
                     sort_option = st.selectbox(
                         "📊 Ordre d'affichage:",
-                        options=['Par total 2025 (décroissant)', 'Par nom de région (A-Z)', 'Par écart (décroissant)'],
+                        options=[f'Par total {current_year} (décroissant)', 'Par nom de région (A-Z)', 'Par écart (décroissant)'],
                         index=0,
                         key="sort_option_financeurs",
                         help="Choisissez l'ordre d'affichage des régions"
@@ -1229,8 +1233,8 @@ def create_feuil3_visualization(df):
                 }
                 
                 # Ordre des régions selon l'option choisie
-                if sort_option == 'Par total 2025 (décroissant)':
-                    region_totals_financeurs = df_financeurs_display.groupby('REGION')['Entrées 2025'].sum().sort_values(ascending=False)
+                if sort_option == f'Par total {current_year} (décroissant)':
+                    region_totals_financeurs = df_financeurs_display.groupby('REGION')[f'Entrées {current_year}'].sum().sort_values(ascending=False)
                     region_order_financeurs = region_totals_financeurs.index.tolist()
                 elif sort_option == 'Par nom de région (A-Z)':
                     region_order_financeurs = sorted(df_financeurs_display['REGION'].unique().tolist())
@@ -1238,36 +1242,36 @@ def create_feuil3_visualization(df):
                     region_totals_ecart = df_financeurs_display.groupby('REGION')['Écart'].sum().sort_values(ascending=False)
                     region_order_financeurs = region_totals_ecart.index.tolist()
                 
-                # ========== GRAPHIQUE UNIFIÉ : BARRES 2024, 2025 et ÉCART CÔTE À CÔTE ==========
-                st.markdown("#### 📊 Analyse Complète : 2024, 2025 et Évolution par Financeur")
+                # ========== GRAPHIQUE UNIFIÉ : BARRES ANNÉE PRÉCÉDENTE, ANNÉE EN COURS et ÉCART CÔTE À CÔTE ==========
+                st.markdown(f"#### 📊 Analyse Complète : {previous_year}, {current_year} et Évolution par Financeur")
                 
                 # Créer un graphique unique avec toutes les barres groupées
                 fig_unified = go.Figure()
                 
-                # Pour chaque financeur, on va créer 3 séries de barres (2024, 2025, Écart)
+                # Pour chaque financeur, on va créer 3 séries de barres (année précédente, année en cours, Écart)
                 financeurs_list = df_financeurs_display['FINANCEURS'].unique()
                 
                 for i, financeur in enumerate(financeurs_list):
                     df_fin = df_financeurs_display[df_financeurs_display['FINANCEURS'] == financeur]
                     
                     regions_fin = []
-                    values_2024 = []
-                    values_2025 = []
+                    values_previous = []
+                    values_current = []
                     values_ecart = []
                     
                     for region in region_order_financeurs:
                         region_data = df_fin[df_fin['REGION'] == region]
                         if not region_data.empty:
                             regions_fin.append(region)
-                            values_2024.append(region_data['Entrées 2024'].iloc[0])
-                            values_2025.append(region_data['Entrées 2025'].iloc[0])
+                            values_previous.append(region_data[f'Entrées {previous_year}'].iloc[0])
+                            values_current.append(region_data[f'Entrées {current_year}'].iloc[0])
                             values_ecart.append(region_data['Écart'].iloc[0])
                     
                     if regions_fin:
                         color_base = financeur_colors.get(financeur, '#999999')
                         
-                        # Définir les couleurs pour 2024, 2025 et Écart
-                        # On utilise des variations de la couleur de base pour 2024 et 2025
+                        # Définir les couleurs pour année précédente, année en cours et Écart
+                        # On utilise des variations de la couleur de base
                         # Import de colorsys pour ajuster la luminosité
                         import colorsys
                         
@@ -1284,31 +1288,31 @@ def create_feuil3_visualization(df):
                             r, g, b = colorsys.hls_to_rgb(h, l, s)
                             return f'#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}'
                         
-                        color_2024 = adjust_brightness(color_base, 0.7)  # Plus foncé pour 2024
-                        color_2025 = color_base  # Couleur normale pour 2025
+                        color_previous = adjust_brightness(color_base, 0.7)  # Plus foncé pour année précédente
+                        color_current = color_base  # Couleur normale pour année en cours
                         
-                        # Barres 2024 (couleur plus foncée)
+                        # Barres année précédente (couleur plus foncée)
                         fig_unified.add_trace(go.Bar(
                             x=regions_fin,
-                            y=values_2024,
-                            name=f'{financeur} - 2024',
-                            marker_color=color_2024,
-                            text=[f"{val:,.0f}" for val in values_2024],
+                            y=values_previous,
+                            name=f'{financeur} - {previous_year}',
+                            marker_color=color_previous,
+                            text=[f"{val:,.0f}" for val in values_previous],
                             textposition='outside',
-                            hovertemplate=f'<b>{financeur} - 2024</b><br>Région: %{{x}}<br>Entrées: %{{y:,.0f}}<extra></extra>',
+                            hovertemplate=f'<b>{financeur} - {previous_year}</b><br>Région: %{{x}}<br>Entrées: %{{y:,.0f}}<extra></extra>',
                             legendgroup=financeur,
                             legendgrouptitle_text=financeur
                         ))
                         
-                        # Barres 2025 (couleur normale)
+                        # Barres année en cours (couleur normale)
                         fig_unified.add_trace(go.Bar(
                             x=regions_fin,
-                            y=values_2025,
-                            name=f'{financeur} - 2025',
-                            marker_color=color_2025,
-                            text=[f"{val:,.0f}" for val in values_2025],
+                            y=values_current,
+                            name=f'{financeur} - {current_year}',
+                            marker_color=color_current,
+                            text=[f"{val:,.0f}" for val in values_current],
                             textposition='outside',
-                            hovertemplate=f'<b>{financeur} - 2025</b><br>Région: %{{x}}<br>Entrées: %{{y:,.0f}}<extra></extra>',
+                            hovertemplate=f'<b>{financeur} - {current_year}</b><br>Région: %{{x}}<br>Entrées: %{{y:,.0f}}<extra></extra>',
                             legendgroup=financeur
                         ))
                         
@@ -1339,7 +1343,7 @@ def create_feuil3_visualization(df):
                 # Mise à jour du layout
                 fig_unified.update_layout(
                     title={
-                        'text': "📊 Analyse Hebdomadaire Complète par Financeur - 2024, 2025 et Évolution",
+                        'text': f"📊 Analyse Hebdomadaire Complète par Financeur - {previous_year}, {current_year} et Évolution",
                         'x': 0.5,
                         'xanchor': 'center',
                         'font': {'size': 20, 'color': '#2c3e50'}
@@ -1376,31 +1380,31 @@ def create_feuil3_visualization(df):
                 
         except Exception as e:
             st.error(f"❌ Erreur lors du chargement des données financeurs : {str(e)}")
-            st.info("💡 Vérifiez que votre fichier contient les colonnes nécessaires : REGION, FINANCEURS, et les colonnes pour 2024 et 2025")
+            st.info(f"💡 Vérifiez que votre fichier contient les colonnes nécessaires : REGION, FINANCEURS, et les colonnes pour {previous_year} et {current_year}")
         
         # KPI de Comparaison pour la vue simple
-        st.markdown("### 📈 KPI de Comparaison 2024 vs 2025")
+        st.markdown(f"### 📈 KPI de Comparaison {previous_year} vs {current_year}")
         
-        total_2024 = df_filtered[col_2024].sum() if col_2024 in df_filtered.columns else 0
-        total_2025 = df_filtered[col_2025].sum() if col_2025 in df_filtered.columns else 0
-        evolution = total_2025 - total_2024
-        evolution_pct = (evolution / total_2024 * 100) if total_2024 > 0 else 0
+        total_previous = df_filtered[col_previous].sum() if col_previous in df_filtered.columns else 0
+        total_current = df_filtered[col_current].sum() if col_current in df_filtered.columns else 0
+        evolution = total_current - total_previous
+        evolution_pct = (evolution / total_previous * 100) if total_previous > 0 else 0
         
         kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
         
         with kpi_col1:
             st.metric(
-                "📊 Total 2024",
-                f"{total_2024:,.0f}",
-                help=f"Total {comparison_metric} en 2024"
+                f"📊 Total {previous_year}",
+                f"{total_previous:,.0f}",
+                help=f"Total {comparison_metric} en {previous_year}"
             )
         
         with kpi_col2:
             st.metric(
-                "📊 Total 2025",
-                f"{total_2025:,.0f}",
+                f"📊 Total {current_year}",
+                f"{total_current:,.0f}",
                 delta=f"{evolution:+,.0f}",
-                help=f"Total {comparison_metric} en 2025"
+                help=f"Total {comparison_metric} en {current_year}"
             )
         
         with kpi_col3:
@@ -1414,14 +1418,14 @@ def create_feuil3_visualization(df):
             )
         
         with kpi_col4:
-            avg_2025 = total_2025 / len(regions_to_show) if len(regions_to_show) > 0 else 0
-            avg_2024 = total_2024 / len(regions_to_show) if len(regions_to_show) > 0 else 0
-            avg_evolution_pct = ((avg_2025 - avg_2024) / avg_2024 * 100) if avg_2024 > 0 else 0
+            avg_current = total_current / len(regions_to_show) if len(regions_to_show) > 0 else 0
+            avg_previous = total_previous / len(regions_to_show) if len(regions_to_show) > 0 else 0
+            avg_evolution_pct = ((avg_current - avg_previous) / avg_previous * 100) if avg_previous > 0 else 0
             st.metric(
-                "📊 Moy. par Région 2025",
-                f"{avg_2025:,.0f}",
+                f"📊 Moy. par Région {current_year}",
+                f"{avg_current:,.0f}",
                 delta=f"{avg_evolution_pct:+.1f}%",
-                help="Moyenne par région en 2025"
+                help=f"Moyenne par région en {current_year}"
             )
         
         # ========== NOUVEAU TABLEAU KPI PAR RÉGION ==========
@@ -1434,10 +1438,10 @@ def create_feuil3_visualization(df):
         for region in region_order:
             region_data = df_filtered[df_filtered['REGION'] == region]
             if not region_data.empty:
-                val_2024 = region_data[col_2024].sum() if col_2024 in region_data.columns else 0
-                val_2025 = region_data[col_2025].sum() if col_2025 in region_data.columns else 0
-                ecart = val_2025 - val_2024
-                evolution_pct_region = (ecart / val_2024 * 100) if val_2024 > 0 else 0
+                val_previous = region_data[col_previous].sum() if col_previous in region_data.columns else 0
+                val_current = region_data[col_current].sum() if col_current in region_data.columns else 0
+                ecart = val_current - val_previous
+                evolution_pct_region = (ecart / val_previous * 100) if val_previous > 0 else 0
                 
                 # Déterminer le statut (croissance/décroissance)
                 if ecart > 0:
@@ -1452,8 +1456,8 @@ def create_feuil3_visualization(df):
                 
                 kpi_table_data.append({
                     'Région': region,
-                    'Total 2024': val_2024,
-                    'Total 2025': val_2025,
+                    f'Total {previous_year}': val_previous,
+                    f'Total {current_year}': val_current,
                     'Écart': ecart,
                     'Évolution (%)': evolution_pct_region,
                     'Statut': statut,
@@ -1473,20 +1477,20 @@ def create_feuil3_visualization(df):
                 width='large',
                 help="Nom de la région"
             ),
-            'Total 2024': st.column_config.NumberColumn(
-                'Total 2024',
+            f'Total {previous_year}': st.column_config.NumberColumn(
+                f'Total {previous_year}',
                 format="%.0f",
-                help="Valeur totale en 2024"
+                help=f"Valeur totale en {previous_year}"
             ),
-            'Total 2025': st.column_config.NumberColumn(
-                'Total 2025',
+            f'Total {current_year}': st.column_config.NumberColumn(
+                f'Total {current_year}',
                 format="%.0f",
-                help="Valeur totale en 2025"
+                help=f"Valeur totale en {current_year}"
             ),
             'Écart': st.column_config.NumberColumn(
-                'Écart (2025-2024)',
+                f'Écart ({current_year}-{previous_year})',
                 format="%+.0f",
-                help="Différence entre 2025 et 2024"
+                help=f"Différence entre {current_year} et {previous_year}"
             ),
             'Évolution (%)': st.column_config.NumberColumn(
                 'Évolution (%)',
